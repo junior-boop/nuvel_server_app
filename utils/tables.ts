@@ -62,6 +62,7 @@ export const Articles = (env: ENV) => {
     userid: "TEXT NOT NULL",
     imageurl: "TEXT",
     noteid: "TEXT NOT NULL",
+    body: "TEXT NOT NULL",
     description: "TEXT NOT NULL",
     title: "TEXT NOT NULL",
     topic: "TEXT",

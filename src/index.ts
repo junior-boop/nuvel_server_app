@@ -4,6 +4,7 @@ import article from "./routes/articles";
 import notes from "./routes/notes";
 import images from "./images";
 import groups from "./routes/groups";
+import bible from "./routes/bible";
 
 const app = new Hono<{ Bindings: CloudflareBindings }>();
 
@@ -26,4 +27,5 @@ app.route("/articles", article);
 app.route("/notes", notes);
 app.route("/groups", groups);
 app.route("/image", images);
+app.route("/bible", bible);
 export default app;

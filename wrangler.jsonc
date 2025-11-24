@@ -21,7 +21,7 @@
 	"r2_buckets": [
 		{
 			"binding": "STORAGE", 
-			"bucket_name": "nuvelstorage",
+			"bucket_name": "nuvelstockage",
 		}
 	]
 	/**
