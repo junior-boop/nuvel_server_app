@@ -30,7 +30,7 @@ notes.get("/sync/:userid", async ({ json, req, res, env }) => {
 
   return json({
     message: "userid " + userid,
-    sync: result,
+    data: result,
     query,
   });
 });
