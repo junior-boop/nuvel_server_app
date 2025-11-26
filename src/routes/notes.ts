@@ -20,10 +20,11 @@ notes.get("/sync/:userid", async ({ json, req, res, env }) => {
   const { userid } = req.param();
   const query = req.queries();
   const Synced = SyncTable(env);
+  const Notes = NotesUser(env);
 
-  const result = await Synced.findAll({
+  const result = await Notes.findAll({
     where: {
-      userid: userid,
+      creator: userid,
     },
   });
 

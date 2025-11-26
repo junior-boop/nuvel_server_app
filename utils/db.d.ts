@@ -17,6 +17,7 @@ export type Notes = {
   clientversion: number;
   lastSyncUpdate: string | Date;
   version: number;
+  publishId: string | null;
 };
 
 export type User = {
@@ -56,6 +57,7 @@ export interface ArticlesType {
   appreciation: string;
   createdAt: string;
   updatedAt: string;
+  version: number | 1;
 }
 
 export interface Comments {

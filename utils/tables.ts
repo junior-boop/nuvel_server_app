@@ -45,6 +45,7 @@ export const Notes = (env: ENV) => {
     modified: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
     lastSyncUpdate: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
     html: "TEXT NULL",
+    publishId: "TEXT NULL", // le texte qui entre dans cet element c'est l'Id de la publication, la date de la dernier mise a jour et le la version de la publication.
     // @ts-ignore
     clientversion: "INTEGER NOT NULL DEFAULT 0",
     // @ts-ignore
@@ -69,6 +70,7 @@ export const Articles = (env: ENV) => {
     appreciation: "TEXT NOT NULL UNIQUE",
     createdAt: "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP",
     updatedAt: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+    version: "INT NOT NULL DEFAULT 1",
   });
 
   (async () => await articles.createTable())();
