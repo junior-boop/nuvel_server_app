@@ -1,12 +1,22 @@
 import { Hono } from "hono";
 import { v4 as uuidv4 } from "uuid";
 import Metadata_images from "./images_rename";
+import { ImagesTable } from "../utils/tables";
 
 const images = new Hono<{ Bindings: CloudflareBindings }>();
 
-images.post("/", async ({ req, res, json, env, text }) => {
+images.get("/", ({ json, env, res }) => {
+  return json({
+    messgae: "je suis dans la place",
+  });
+});
+
+images.post("/:userid", async ({ req, res, json, env, text, status }) => {
   const bucket = env.STORAGE;
   const { images } = await req.parseBody();
+  const { userid } = req.param();
+  const Image = ImagesTable(env);
+  const hostname = new URL(req.url).host;
 
   try {
     const metadata = Metadata_images(images as File);
@@ -18,7 +28,9 @@ images.post("/", async ({ req, res, json, env, text }) => {
       key: uuidv4(),
     };
 
-    await bucket.put(object.name as string, images, {
+    const key = `images/${object.name}`;
+
+    await bucket.put(key, images, {
       customMetadata: {
         name: object.name,
         size: object.size,
@@ -30,18 +42,32 @@ images.post("/", async ({ req, res, json, env, text }) => {
       },
     });
 
-    return json(object);
+    const save = await Image.create({
+      id: uuidv4(),
+      name: object.name,
+      userid: userid,
+      size: object.size,
+      mineType: object.minetype,
+      url: `${hostname}/image/g/${object.name}`,
+      created: new Date().toISOString(),
+      modified: new Date().toISOString(),
+    });
+
+    return json(save);
   } catch (error) {
     console.log(error);
+    status(500);
     return text("il y a une erreur " + error);
   }
 });
 
-images.get("/:images", async ({ json, env, res, req }) => {
-  const { images } = req.param();
+images.get("/g/:name", async ({ json, env, res, req }) => {
+  const { name } = req.param();
   const bucket = env.STORAGE;
 
-  const files = await bucket.get(images);
+  const key = `images/${name}`;
+
+  const files = await bucket.get(key);
 
   if (files === null) {
     return json("il y n'a pas ce fichier");

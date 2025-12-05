@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { Notes as NotesUser, SyncTable } from "../../utils/tables";
 import { v4 as uuidv4 } from "uuid";
 import { Notes as NotesType } from "../../utils/db";
+import { IncludeOptions } from "../../utils/simpleorm";
 
 const notes = new Hono<{ Bindings: CloudflareBindings }>();
 
@@ -11,7 +12,16 @@ notes.get("/", async ({ json, env, res }) => {
 
   console.log("je suis dans la joie");
   return json({
-    notes: await Notes.findAll(),
+    notes: await Notes.findAll({
+      select: ["creator", "id", "modified", "body", "pinned"],
+      include: {
+        model: "Users",
+        as: "user",
+        foreignKey: "creator",
+        localKey: "id",
+        type: "belongsTo",
+      } as IncludeOptions<NotesType>,
+    }),
     sync_event: await Synced.findAll(),
   });
 });
@@ -20,11 +30,10 @@ notes.get("/sync/:userid", async ({ json, req, res, env }) => {
   const { userid } = req.param();
   const query = req.queries();
   const Synced = SyncTable(env);
-  const Notes = NotesUser(env);
 
-  const result = await Notes.findAll({
+  const result = await Synced.findAll({
     where: {
-      creator: userid,
+      userid: userid,
     },
   });
 
@@ -32,6 +41,19 @@ notes.get("/sync/:userid", async ({ json, req, res, env }) => {
     message: "userid " + userid,
     data: result,
     query,
+  });
+});
+
+notes.get("/:creator", async ({ json, req, env }) => {
+  const Notes = NotesUser(env);
+  const { creator } = req.param();
+  const result = await Notes.findAll({
+    where: {
+      creator: creator,
+    },
+  });
+  return json({
+    data: result,
   });
 });
 

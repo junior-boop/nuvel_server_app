@@ -34,6 +34,19 @@ groups.get("/sync/:userid", async ({ json, req, res, env }) => {
   });
 });
 
+groups.get("/:userid", async ({ json, req, env }) => {
+  const Groups = GroupsTable(env);
+  const { userid } = req.param();
+  const result = await Groups.findAll({
+    where: {
+      userid: userid,
+    },
+  });
+  return json({
+    data: result,
+  });
+});
+
 groups.post("/:id", async ({ json, req, env }) => {
   const Groups = GroupsTable(env);
   const Synced = SyncTable(env);
@@ -73,7 +86,7 @@ groups.post("/:id", async ({ json, req, env }) => {
 
   const object: GroupesType = {
     ...data,
-    userid: id,
+    userid: data.userid,
     lastSyncUpdate: new Date().toISOString(),
     version: 1,
   };

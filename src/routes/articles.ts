@@ -1,6 +1,7 @@
 import { Hono } from "hono";
-import { Articles as ArticlesTable, ENV } from "../../utils/tables";
+import { Articles as ArticlesTable, ENV, Publish } from "../../utils/tables";
 import { v4 as uuidv4 } from "uuid";
+import { ArticlesType } from "../../utils/db";
 
 const article = new Hono<{ Bindings: CloudflareBindings }>();
 
@@ -10,11 +11,39 @@ const Article = (env: ENV) => {
 };
 
 article.get("/", async ({ json, env, res }) => {
-  const Articles = Article(env);
-  return json(await Articles.findAll());
+  const Articles = Publish(env);
+  return json(
+    await Articles.findAll({
+      orderBy: { column: "createdAt", direction: "DESC" },
+      select: ["id", "title", "description", "imageurl", "noteid", "topic", "createdAt", "updatedAt"],
+      include: {
+        model: "users",
+        as: "user",
+        foreignKey: "userid",
+        localKey: "id",
+        type: "belongsTo",
+      },
+    })
+  );
 });
 
-article.get("/:userid", async ({ json, env, text, req }) => {
+
+article.get('/:articleid', async ({ json, env, text, req }) => {
+  const { articleid } = req.param();
+  const Articles = Article(env);
+  const results = await Articles.findById(articleid, {
+    include: {
+      model: "users",
+      as: "user",
+      foreignKey: "userid",
+      localKey: "id",
+      type: "belongsTo",
+    },
+  });
+  return json(results);
+})
+
+article.get("/userid/:userid", async ({ json, env, text, req }) => {
   const { userid } = req.param();
   const Articles = Article(env);
   const results = await Articles.findAll({
@@ -27,8 +56,8 @@ article.get("/:userid", async ({ json, env, text, req }) => {
 
 article.post("/:userid/doc/:articleid", async ({ json, env, req, status }) => {
   const { userid, articleid } = req.param();
-  const article = await req.json();
-  const Articles = Article(env);
+  const article = (await req.json()) as ArticlesType;
+  const Articles = Publish(env);
 
   try {
     const result = await Articles.create({
@@ -39,6 +68,7 @@ article.post("/:userid/doc/:articleid", async ({ json, env, req, status }) => {
       appreciation: "[]",
       imageurl: article.imageurl,
       noteid: article.noteid,
+      body: article.body,
       topic: article.topic,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -53,9 +83,13 @@ article.post("/:userid/doc/:articleid", async ({ json, env, req, status }) => {
     status(500);
     return json({
       status: `/articles 500 Error`,
-      error: err,
+      error: JSON.stringify(err),
     });
   }
+
+  return json({
+    result,
+  });
 });
 
 article.put("/:userid/doc/:articleid", async ({ json, env, req, status }) => {

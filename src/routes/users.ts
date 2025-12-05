@@ -13,6 +13,23 @@ users.get("/", async ({ json, env, res }) => {
   return json(await Users.findAll());
 });
 
+users.get("/:userid", async ({ json, env, res, req }) => {
+  const { userid } = req.param();
+  await UsersAccount(env).createTable();
+
+  const Users = UsersAccount(env);
+
+  console.log("je suis dans la joie");
+
+  return json(
+    await Users.findOne({
+      where: {
+        id: userid,
+      },
+    })
+  );
+});
+
 users.post("/signin", async ({ req, res, json, env }) => {
   await UsersAccount(env).createTable();
   const Users = UsersAccount(env);

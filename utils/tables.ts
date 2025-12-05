@@ -8,6 +8,7 @@ import {
   Devices as DeviceType,
   SyncEvent as SyncEventType,
   Groups as GroupTable,
+  ImagesType,
 } from "./db";
 
 export type ENV = Partial<CloudflareBindings>;
@@ -56,6 +57,27 @@ export const Notes = (env: ENV) => {
 
   return userNotes;
 };
+export const Publish = (env: ENV) => {
+  const userNotes = db(env).createModel<ArticlesType>(`publish`, {
+    id: "TEXT PRIMARY KEY",
+    userid: "TEXT",
+    body: "TEXT",
+    createdAt: "DATETIME DEFAULT CURRENT_TIMESTAMP",
+    updatedAt: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+    title: "TEXT NULL",
+    appreciation: "TEXT NULL",
+    imageurl: "TEXT NULL",
+    noteid: "TEXT NULL",
+    topic: "TEXT NULL",
+    description: "TEXT NULL",
+    // @ts-ignore
+    version: "INT NOT NULL DEFAULT 1",
+  });
+
+  (async () => await userNotes.createTable())();
+
+  return userNotes;
+};
 
 export const Articles = (env: ENV) => {
   const articles = db(env).createModel<ArticlesType>("articles", {
@@ -70,6 +92,7 @@ export const Articles = (env: ENV) => {
     appreciation: "TEXT NOT NULL UNIQUE",
     createdAt: "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP",
     updatedAt: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+    // @ts-ignore
     version: "INT NOT NULL DEFAULT 1",
   });
 
@@ -82,9 +105,11 @@ export const Comments = (env: ENV) => {
     id: "TEXT PRIMARY KEY NOT NULL",
     articleId: "TEXT NOT NULL UNIQUE",
     content: "TEXT NOT NULL",
+    // @ts-ignore
+    notes: "INTEGER NOT NULL DEFAULT 0",
     creator: "TEXT NOT NULL",
     created: "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP",
-    modified: "TIME DEFAULT CURRENT_TIMESTAMP",
+    modified: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
   });
 
   (async () => await comments.createTable())();
@@ -97,6 +122,7 @@ export const GroupsTable = (env: ENV) => {
     userid: "TEXT NOT NULL",
     name: "TEXT NOT NULL",
     lastSyncUpdate: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+    // @ts-ignore
     version: "INT NOT NULL DEFAULT 1",
     created: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
     modified: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
@@ -104,6 +130,21 @@ export const GroupsTable = (env: ENV) => {
 
   (async () => await grouped.createTable())();
   return grouped;
+};
+export const ImagesTable = (env: ENV) => {
+  const Images = db(env).createModel<ImagesType>("images", {
+    id: "TEXT PRIMARY KEY NOT NULL",
+    userid: "TEXT NOT NULL",
+    name: "TEXT NOT NULL",
+    mineType: "TEXT NOT NULL",
+    url: "TEXT NOT NULL",
+    size: "INTEGER NOT NULL",
+    created: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+    modified: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+  });
+
+  (async () => await Images.createTable())();
+  return Images;
 };
 
 export const Appreciations = (env: ENV) => {
@@ -137,6 +178,7 @@ export const SyncTable = (env: ENV) => {
     noteid: "TEXT NOT NULL",
     userid: "TEXT NOT NULL",
     action: "TEXT NOT NULL",
+    // @ts-ignore
     synced: "BOOLEAN NOT NULL DEFAULT 0",
     timestamp: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
   });

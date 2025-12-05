@@ -65,6 +65,7 @@ export interface Comments {
   articleId: string;
   creator: string;
   content: string;
+  notes: number;
   created: string;
   modified: string;
 }
@@ -147,6 +148,17 @@ export type usersession = {
   name: string;
   email: string;
 };
+
+export interface ImagesType {
+  id: string;
+  userid: string;
+  name: string;
+  url: string;
+  mineType: string;
+  size: number;
+  created: Date | string;
+  modified: Date | string;
+}
 
 declare global {
   interface Window {
