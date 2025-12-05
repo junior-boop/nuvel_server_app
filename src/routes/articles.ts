@@ -1,7 +1,8 @@
 import { Hono } from "hono";
 import { Articles as ArticlesTable, ENV, Publish } from "../../utils/tables";
 import { v4 as uuidv4 } from "uuid";
-import { ArticlesType } from "../../utils/db";
+import { ArticlesType, User as UsersType } from "../../utils/db";
+import { IncludeOptions } from "../../utils/simpleorm";
 
 const article = new Hono<{ Bindings: CloudflareBindings }>();
 
@@ -15,14 +16,15 @@ article.get("/", async ({ json, env, res }) => {
   return json(
     await Articles.findAll({
       orderBy: { column: "createdAt", direction: "DESC" },
-      select: ["id", "title", "description", "imageurl", "noteid", "topic", "createdAt", "updatedAt"],
+      select: ["id","userid", "title", "description", "imageurl", "noteid", "topic", "createdAt", "updatedAt"],
       include: {
         model: "users",
         as: "user",
         foreignKey: "userid",
         localKey: "id",
         type: "belongsTo",
-      },
+        select : ["id", "name", "email", "church_status", "first_name", "photo" ],
+      } as IncludeOptions<UsersType>,
     })
   );
 });
@@ -30,7 +32,7 @@ article.get("/", async ({ json, env, res }) => {
 
 article.get('/:articleid', async ({ json, env, text, req }) => {
   const { articleid } = req.param();
-  const Articles = Article(env);
+  const Articles = Publish(env);
   const results = await Articles.findById(articleid, {
     include: {
       model: "users",
@@ -38,7 +40,8 @@ article.get('/:articleid', async ({ json, env, text, req }) => {
       foreignKey: "userid",
       localKey: "id",
       type: "belongsTo",
-    },
+      select : ["id", "name", "email", "church_status", "first_name", "photo" ],
+    } as IncludeOptions<UsersType>,
   });
   return json(results);
 })

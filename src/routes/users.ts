@@ -1,6 +1,8 @@
 import { Hono } from "hono";
-import { UsersAccount } from "../../utils/tables";
+import { Notes as NotesTable, UsersAccount } from "../../utils/tables";
 import { v4 as uuidv4 } from "uuid";
+import { IncludeOptions } from "../../utils/simpleorm";
+import { Notes } from "../../utils/db";
 
 const users = new Hono<{ Bindings: CloudflareBindings }>();
 
@@ -10,16 +12,16 @@ users.get("/", async ({ json, env, res }) => {
 
   console.log("je suis dans la joie");
 
-  return json(await Users.findAll());
+  return json(await Users.findAll({
+    select : ["id", "email", "name", "first_name", "photo", "biography"]
+  }));
 });
 
 users.get("/:userid", async ({ json, env, res, req }) => {
   const { userid } = req.param();
   await UsersAccount(env).createTable();
 
-  const Users = UsersAccount(env);
-
-  console.log("je suis dans la joie");
+  const Users = UsersAccount(env)
 
   return json(
     await Users.findOne({
@@ -28,6 +30,29 @@ users.get("/:userid", async ({ json, env, res, req }) => {
       },
     })
   );
+});
+users.get("/:userid/notes", async ({ json, env, res, req }) => {
+  const { userid } = req.param();
+  await UsersAccount(env).createTable();
+
+  const Users = UsersAccount(env);
+  const Notes = NotesTable(env);
+  const user = await Users.findOne({
+      where: {
+        id: userid,
+      },
+    })
+
+    const notes = await Notes.findAll({
+      where: {
+        creator: userid,
+      },
+      count : true
+    })
+  return json({
+    ...user, 
+    notes
+  })
 });
 
 users.post("/signin", async ({ req, res, json, env }) => {

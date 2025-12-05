@@ -59,6 +59,7 @@ export interface IncludeOptions<TRelated extends DatabaseRow = any> {
   type?: "hasMany" | "hasOne" | "belongsTo"; // Type de relation
   where?: Partial<TRelated>; // Conditions typées sur le modèle lié
   select?: (keyof TRelated)[]; // Colonnes typées du modèle lié
+  count?: boolean; // Si true, retourne le nombre d'éléments au lieu des données complètes
 }
 
 export interface QueryOptions<T> {
@@ -68,6 +69,7 @@ export interface QueryOptions<T> {
   offset?: number;
   include?: IncludeOptions<any> | IncludeOptions<any>[];
   select?: (keyof T)[]; // Colonnes typées du modèle principal
+  count?: boolean;
 }
 
 type TypeWhereCondtion<T> = {
@@ -463,7 +465,7 @@ export abstract class Model {
     orm: SimpleORM,
     options: QueryOptions<T> = {}
   ): Promise<T[]> {
-    const { where = {}, orderBy, limit, offset, include, select } = options;
+    const { where = {}, orderBy, limit, offset, include, select, count } = options;
 
     // SELECT clause - utiliser les colonnes spécifiées ou * par défaut
     const selectClause = select && select.length > 0 ? select.join(", ") : "*";
@@ -503,6 +505,12 @@ export abstract class Model {
     // Handle includes (relations)
     if (include && results.length > 0) {
       results = await this.handleIncludes<T>(tableName, results, include, orm);
+    }
+
+    if(count) {
+      const countSql = `SELECT COUNT(*) as count FROM ${tableName}`;
+      const countResult = await orm.get<{count : number}>(countSql);
+      return { results, count: countResult.count };
     }
 
     return results;
@@ -575,25 +583,25 @@ export abstract class Model {
     return result;
   }
 
-  async count(
-    tableName: string,
-    conditions: WhereConditions = {},
-    orm: SimpleORM
-  ): Promise<number> {
-    let sql = `SELECT COUNT(*) as count FROM ${tableName}`;
-    const params: any[] = [];
+  // async count(
+  //   tableName: string,
+  //   conditions: WhereConditions = {},
+  //   orm: SimpleORM
+  // ): Promise<number> {
+  //   let sql = `SELECT COUNT(*) as count FROM ${tableName}`;
+  //   const params: any[] = [];
 
-    if (Object.keys(conditions).length > 0) {
-      const whereClause = Object.entries(conditions)
-        .map(([key]) => `${key} = ?`)
-        .join(" AND ");
-      sql += ` WHERE ${whereClause}`;
-      params.push(...Object.values(conditions));
-    }
+  //   if (Object.keys(conditions).length > 0) {
+  //     const whereClause = Object.entries(conditions)
+  //       .map(([key]) => `${key} = ?`)
+  //       .join(" AND ");
+  //     sql += ` WHERE ${whereClause}`;
+  //     params.push(...Object.values(conditions));
+  //   }
 
-    const result = await orm.get<{ count: number }>(sql, params);
-    return result?.count || 0;
-  }
+  //   const result = await orm.get<{ count: number }>(sql, params);
+  //   return result?.count || 0;
+  // }
 
   // Vérifier si un enregistrement existe
   static async exists(
@@ -800,218 +808,10 @@ export abstract class Model {
     return result?.count || 0;
   }
 
-  // Méthode pour gérer les relations (includes) - Asynchrone maintenant
-  // static async handleIncludes<T extends DatabaseRow>(
-  //   tableName: string,
-  //   results: T[],
-  //   include: IncludeOptions | IncludeOptions[],
-  //   orm: SimpleORM
-  // ): Promise<T[]> {
-  //   if (results.length === 0) return results;
-
-  //   const includeArray = Array.isArray(include) ? include : [include];
-
-  //   for (const includeOption of includeArray) {
-  //     const {
-  //       model: includeTable,
-  //       foreignKey,
-  //       localKey = "id",
-  //       as,
-  //       type = "hasMany",
-  //       where: extraWhere = {},
-  //       select,
-  //     } = includeOption;
-
-  //     const relationName = as || includeTable;
-
-  //     // Déterminer quelle colonne utiliser pour récupérer les IDs
-  //     let idsToQuery: any[];
-  //     let queryColumn: string;
-  //     let mapColumn: string;
-
-  //     if (
-  //       type === "belongsTo" ||
-  //       (type === "hasOne" &&
-  //         results.some((r) => (r as any)[foreignKey] !== undefined))
-  //     ) {
-  //       // BelongsTo: foreignKey est dans la table principale (results)
-  //       // On récupère les valeurs de foreignKey depuis results
-  //       idsToQuery = [
-  //         ...new Set(
-  //           results.map((row) => (row as any)[foreignKey]).filter(Boolean)
-  //         ),
-  //       ];
-  //       queryColumn = localKey; // On cherche par localKey dans la table liée
-  //       mapColumn = localKey; // On mappe par localKey
-  //     } else {
-  //       // HasMany/HasOne: foreignKey est dans la table liée
-  //       // On récupère les IDs depuis localKey de results
-  //       idsToQuery = [
-  //         ...new Set(
-  //           results.map((row) => (row as any)[localKey]).filter(Boolean)
-  //         ),
-  //       ];
-  //       queryColumn = foreignKey; // On cherche par foreignKey dans la table liée
-  //       mapColumn = foreignKey; // On mappe par foreignKey
-  //     }
-
-  //     if (idsToQuery.length === 0) {
-  //       // Pas de données à lier, définir valeur par défaut
-  //       results.forEach((row) => {
-  //         (row as any)[relationName] = type === "hasMany" ? [] : null;
-  //       });
-  //       continue;
-  //     }
-
-  //     // Construire la clause SELECT
-  //     const selectClause =
-  //       select && select.length > 0 ? select.join(", ") : "*";
-
-  //     // Construire les conditions WHERE
-  //     const placeholders = idsToQuery.map(() => "?").join(", ");
-  //     let whereClauses = [`${queryColumn} IN (${placeholders})`];
-  //     let params: any[] = [...idsToQuery];
-
-  //     // Ajouter les conditions supplémentaires
-  //     if (Object.keys(extraWhere).length > 0) {
-  //       const extraConditions = Object.keys(extraWhere)
-  //         .map((key) => `${key} = ?`)
-  //         .join(" AND ");
-  //       whereClauses.push(extraConditions);
-  //       params.push(...Object.values(extraWhere));
-  //     }
-
-  //     // Requête SQL finale
-  //     const relatedSql = `SELECT ${selectClause} FROM ${includeTable} WHERE ${whereClauses.join(
-  //       " AND "
-  //     )}`;
-  //     const relatedData = await orm.query(relatedSql, params);
-
-  //     // Traiter selon le type de relation
-  //     if (type === "hasMany") {
-  //       // Grouper les données liées par clé (plusieurs résultats)
-  //       const relatedMap = new Map<any, any[]>();
-  //       relatedData.forEach((item) => {
-  //         const key = (item as any)[mapColumn];
-  //         if (!relatedMap.has(key)) {
-  //           relatedMap.set(key, []);
-  //         }
-  //         relatedMap.get(key)!.push(item);
-  //       });
-
-  //       // Attacher les tableaux de données liées
-  //       results.forEach((row) => {
-  //         const keyValue = (row as any)[localKey];
-  //         (row as any)[relationName] = relatedMap.get(keyValue) || [];
-  //       });
-  //     } else if (type === "hasOne" || type === "belongsTo") {
-  //       // Mapper un seul résultat par clé
-  //       const relatedMap = new Map<any, any>();
-  //       relatedData.forEach((item) => {
-  //         const key = (item as any)[mapColumn];
-  //         if (!relatedMap.has(key)) {
-  //           relatedMap.set(key, item);
-  //         }
-  //       });
-
-  //       // Attacher un seul objet (ou null)
-  //       results.forEach((row) => {
-  //         const keyValue =
-  //           type === "belongsTo"
-  //             ? (row as any)[foreignKey] // Pour belongsTo, utiliser foreignKey de row
-  //             : (row as any)[localKey]; // Pour hasOne, utiliser localKey de row
-  //         (row as any)[relationName] = relatedMap.get(keyValue) || null;
-  //       });
-  //     }
-  //   }
-
-  //   return results;
-  // }
-
-  // /**
-  //  * Nouvelle méthode pour les relations belongsTo inversées
-  //  * (quand la clé étrangère est dans la table principale)
-  //  */
-  // static async handleBelongsToIncludes<T extends DatabaseRow>(
-  //   tableName: string,
-  //   results: T[],
-  //   include: IncludeOptions | IncludeOptions[],
-  //   orm: SimpleORM
-  // ): Promise<T[]> {
-  //   if (results.length === 0) return results;
-
-  //   const includeArray = Array.isArray(include) ? include : [include];
-
-  //   for (const includeOption of includeArray) {
-  //     const {
-  //       model: includeTable,
-  //       foreignKey, // Dans ce cas, c'est la colonne dans la table actuelle
-  //       localKey = "id", // Dans ce cas, c'est la PK de la table liée
-  //       as,
-  //       where: extraWhere = {},
-  //       select,
-  //     } = includeOption;
-
-  //     const relationName = as || includeTable;
-
-  //     // Récupérer les IDs étrangers uniques depuis la table actuelle
-  //     const foreignIds = [
-  //       ...new Set(
-  //         results.map((row) => (row as any)[foreignKey]).filter(Boolean)
-  //       ),
-  //     ];
-
-  //     if (foreignIds.length === 0) {
-  //       // Pas de clés étrangères, définir null pour tous
-  //       results.forEach((row) => {
-  //         (row as any)[relationName] = null;
-  //       });
-  //       continue;
-  //     }
-
-  //     // Construire la clause SELECT
-  //     const selectClause =
-  //       select && select.length > 0 ? select.join(", ") : "*";
-
-  //     // Requête pour récupérer les enregistrements liés
-  //     const placeholders = foreignIds.map(() => "?").join(", ");
-  //     let whereClauses = [`${localKey} IN (${placeholders})`];
-  //     let params: any[] = [...foreignIds];
-
-  //     // Ajouter les conditions supplémentaires
-  //     if (Object.keys(extraWhere).length > 0) {
-  //       const extraConditions = Object.keys(extraWhere)
-  //         .map((key) => `${key} = ?`)
-  //         .join(" AND ");
-  //       whereClauses.push(extraConditions);
-  //       params.push(...Object.values(extraWhere));
-  //     }
-
-  //     const relatedSql = `SELECT ${selectClause} FROM ${includeTable} WHERE ${whereClauses.join(
-  //       " AND "
-  //     )}`;
-  //     const relatedData = await orm.query(relatedSql, params);
-
-  //     // Mapper les résultats par leur PK
-  //     const relatedMap = new Map<any, any>();
-  //     relatedData.forEach((item) => {
-  //       const key = (item as any)[localKey];
-  //       relatedMap.set(key, item);
-  //     });
-
-  //     // Attacher les données liées
-  //     results.forEach((row) => {
-  //       const foreignId = (row as any)[foreignKey];
-  //       (row as any)[relationName] = relatedMap.get(foreignId) || null;
-  //     });
-  //   }
-
-  //   return results;
-  // }
-
   /**
    * Méthode améliorée pour gérer les relations (includes)
    * Support pour hasMany, hasOne, et belongsTo
+   * Si count est activé, retourne à la fois les données ET le count
    */
   static async handleIncludes<T extends DatabaseRow>(
     tableName: string,
@@ -1032,9 +832,11 @@ export abstract class Model {
         type = "hasMany",
         where: extraWhere = {},
         select,
+        count = false, // Si true, ajoute aussi le count en plus des données
       } = includeOption;
 
       const relationName = as || includeTable;
+      const countName = `${relationName}Count`; // Nom de la propriété pour le count
 
       // Déterminer quelle colonne utiliser pour récupérer les IDs
       let idsToQuery: any[];
@@ -1071,13 +873,12 @@ export abstract class Model {
         // Pas de données à lier, définir valeur par défaut
         results.forEach((row) => {
           (row as any)[relationName] = type === "hasMany" ? [] : null;
+          if (count) {
+            (row as any)[countName] = 0;
+          }
         });
         continue;
       }
-
-      // Construire la clause SELECT
-      const selectClause =
-        select && select.length > 0 ? select.join(", ") : "*";
 
       // Construire les conditions WHERE
       const placeholders = idsToQuery.map(() => "?").join(", ");
@@ -1093,7 +894,12 @@ export abstract class Model {
         params.push(...Object.values(extraWhere));
       }
 
-      // Requête SQL finale
+      // Récupérer les données (toujours, même si count est activé)
+      // Construire la clause SELECT
+      const selectClause =
+        select && select.length > 0 ? select.join(", ") : "*";
+
+      // Requête SQL finale pour les données
       const relatedSql = `SELECT ${selectClause} FROM ${includeTable} WHERE ${whereClauses.join(
         " AND "
       )}`;
@@ -1114,7 +920,13 @@ export abstract class Model {
         // Attacher les tableaux de données liées
         results.forEach((row) => {
           const keyValue = (row as any)[localKey];
-          (row as any)[relationName] = relatedMap.get(keyValue) || [];
+          const relatedItems = relatedMap.get(keyValue) || [];
+          (row as any)[relationName] = relatedItems;
+          
+          // Si count est activé, ajouter aussi le nombre d'éléments
+          if (count) {
+            (row as any)[countName] = relatedItems.length;
+          }
         });
       } else if (type === "hasOne" || type === "belongsTo") {
         // Mapper un seul résultat par clé
@@ -1132,7 +944,13 @@ export abstract class Model {
             type === "belongsTo"
               ? (row as any)[foreignKey] // Pour belongsTo, utiliser foreignKey de row
               : (row as any)[localKey]; // Pour hasOne, utiliser localKey de row
-          (row as any)[relationName] = relatedMap.get(keyValue) || null;
+          const relatedItem = relatedMap.get(keyValue) || null;
+          (row as any)[relationName] = relatedItem;
+          
+          // Si count est activé, ajouter 1 si l'élément existe, 0 sinon
+          if (count) {
+            (row as any)[countName] = relatedItem ? 1 : 0;
+          }
         });
       }
     }

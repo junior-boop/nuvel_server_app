@@ -103,7 +103,7 @@ export const Articles = (env: ENV) => {
 export const Comments = (env: ENV) => {
   const comments = db(env).createModel<CommentType>("comments", {
     id: "TEXT PRIMARY KEY NOT NULL",
-    articleId: "TEXT NOT NULL UNIQUE",
+    articleId: "TEXT NOT NULL",
     content: "TEXT NOT NULL",
     // @ts-ignore
     notes: "INTEGER NOT NULL DEFAULT 0",
