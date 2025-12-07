@@ -7,23 +7,53 @@
 	"name": "nuvelserver",
 	"main": "src/index.ts",
 	"compatibility_date": "2025-09-19",
-	
 	"observability": {
 		"enabled": true
 	},
 	"d1_databases": [
 		{
-		"binding": "DB",
-		"database_name": "nuvel_database",
-		"database_id": "b295a1f4-88c4-44d4-ba14-9fc651ef1c0c"
+			"binding": "DB",
+			"database_name": "nuvel_database",
+			"database_id": "b295a1f4-88c4-44d4-ba14-9fc651ef1c0c"
 		}
-	], 
+	],
 	"r2_buckets": [
 		{
-			"binding": "STORAGE", 
+			"binding": "STORAGE",
 			"bucket_name": "nuvelstockage",
 		}
-	]
+	],
+	/**
+	 * Durable Objects
+	 * Docs: https://developers.cloudflare.com/durable-objects/
+	 */
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "COMMENTS_DO",
+				"class_name": "CommentsDurableObject",
+				"script_name": "nuvelserver"
+			},
+			{
+				"name": "APPRECIATIONS_DO",
+				"class_name": "AppreciationsDurableObject",
+				"script_name": "nuvelserver"
+			}
+		]
+	},
+	/**
+	 * Migrations for Durable Objects
+	 * Required to enable new Durable Object classes
+	 */
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": [
+				"CommentsDurableObject",
+				"AppreciationsDurableObject"
+			]
+		}
+	],
 	/**
 	 * Smart Placement
 	 * Docs: https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement

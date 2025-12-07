@@ -7,6 +7,11 @@ import images from "./images";
 import groups from "./routes/groups";
 import bible from "./routes/bible";
 import comments from "./routes/comments";
+import appreciation from "./routes/appreciation";
+
+// Importer et exporter les Durable Objects pour Cloudflare Workers
+export { CommentsDurableObject } from "./durable-objects/CommentsDurableObject";
+export { AppreciationsDurableObject } from "./durable-objects/AppreciationsDurableObject";
 
 const app = new Hono<{ Bindings: CloudflareBindings }>();
 
@@ -919,6 +924,7 @@ app.route("/groups", groups);
 app.route("/image", images);
 app.route("/bible", bible);
 app.route("/comments", comments);
+app.route("/appreciations", appreciation);
 
 export default app;
 
