@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { Notes as NotesUser, SyncTable } from "../../utils/tables";
+import { Notes as NotesUser, SyncEventsTable as SyncTable } from "../../utils/tables";
 import { v4 as uuidv4 } from "uuid";
 import { Notes as NotesType } from "../../utils/db";
 import { IncludeOptions } from "../../utils/simpleorm";
@@ -33,7 +33,7 @@ notes.get("/sync/:userid", async ({ json, req, res, env }) => {
 
   const result = await Synced.findAll({
     where: {
-      userid: userid,
+      userId: userid,
     },
   });
 
@@ -65,7 +65,7 @@ notes.post("/:id", async ({ json, req, env }) => {
 
   const check = await Notes.findOne({
     where: {
-      id: data.id,
+      id: id,
     },
   });
 
@@ -83,14 +83,18 @@ notes.post("/:id", async ({ json, req, env }) => {
     );
     Synced.create({
       id: uuidv4(),
-      userid: data.creator,
-      noteid: data.id,
-      action: "UPDATE",
+      userId: data.creator,
+      entityId: data.id,
+      entityType: "note",
+      action: "updated",
       timestamp: new Date().toISOString(),
-      synced: false,
+      synced: 0,
     });
     return json({
+      message: "note updated",
+      check,
       sucess: true,
+      result
     });
   }
 
@@ -104,15 +108,18 @@ notes.post("/:id", async ({ json, req, env }) => {
   const result = await Notes.create(object);
   Synced.create({
     id: uuidv4(),
-    userid: data.creator,
-    noteid: result.id,
-    action: "CREATE",
+    userId: data.creator,
+    entityId: result.id,
+    entityType: "note",
+    action: "created",
     timestamp: new Date().toISOString(),
-    synced: false,
+    synced: 0,
   });
 
   return json({
+    message: "note created",
     sucess: true,
+    result
   });
 });
 

@@ -244,7 +244,7 @@ appreciation.post("/:articleId/toggle", async ({ json, env, req, status }) => {
         const id = env.APPRECIATIONS_DO.idFromName(articleId);
         const stub = env.APPRECIATIONS_DO.get(id);
         
-        await stub.fetch(new Request('http://internal/notify', {
+        await stub.fetch('http://dummy/notify', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -252,7 +252,7 @@ appreciation.post("/:articleId/toggle", async ({ json, env, req, status }) => {
             userid: userid,
             action: 'removed'
           })
-        }));
+        });
       } catch (err) {
         console.error('[Appreciations] Error notifying Durable Object:', err);
       }
@@ -275,7 +275,7 @@ appreciation.post("/:articleId/toggle", async ({ json, env, req, status }) => {
         const id = env.APPRECIATIONS_DO.idFromName(articleId);
         const stub = env.APPRECIATIONS_DO.get(id);
         
-        await stub.fetch(new Request('http://internal/notify', {
+        await stub.fetch('http://dummy/notify', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -283,7 +283,7 @@ appreciation.post("/:articleId/toggle", async ({ json, env, req, status }) => {
             userid: userid,
             action: 'added'
           })
-        }));
+        });
       } catch (err) {
         console.error('[Appreciations] Error notifying Durable Object:', err);
       }

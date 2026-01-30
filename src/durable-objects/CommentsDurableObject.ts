@@ -93,6 +93,9 @@ export class CommentsDurableObject extends DurableObject {
         case 'comment_added':
           await this.broadcastCommentAdded(data.comment);
           break;
+        case 'comment_updated':
+          await this.broadcastCommentUpdated(data.comment);
+          break;
         case 'comment_deleted':
           await this.broadcastCommentDeleted(data.commentId);
           break;
@@ -146,6 +149,24 @@ export class CommentsDurableObject extends DurableObject {
 
     this.broadcast(JSON.stringify(message));
     console.log(`[CommentsDO] Broadcasted comment_deleted to ${this.sessions.size} sessions`);
+  }
+
+  /**
+   * Broadcaster qu'un commentaire a été mis à jour (upvotes/signals)
+   */
+  async broadcastCommentUpdated(comment: any) {
+    const count = await this.getCommentsCount();
+    
+    const message = {
+      type: 'comment_updated',
+      comment: comment,
+      count: count,
+      articleId: this.articleId,
+      timestamp: Date.now()
+    };
+
+    this.broadcast(JSON.stringify(message));
+    console.log(`[CommentsDO] Broadcasted comment_updated to ${this.sessions.size} sessions`);
   }
 
   /**

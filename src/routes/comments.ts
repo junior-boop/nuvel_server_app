@@ -148,14 +148,54 @@ comments.get("/:articleId", async ({ json, env, req }) => {
 
   try {
     const allComments = await CommentsModel.findAll({
-      where: { articleId },
-      orderBy: { column: 'created', direction: 'DESC' }
+      where: { articleId }
+    });
+
+    // Filtrer les commentaires avec 5+ signalements
+    const visibleComments = allComments.filter(comment => {
+      let signalsCount = 0;
+      try {
+        signalsCount = JSON.parse(comment.signals || '[]').length;
+      } catch {
+        signalsCount = 0;
+      }
+      // Garder seulement si moins de 5 signalements
+      return signalsCount < 5;
+    });
+
+    // Trier les commentaires visibles :
+    // 1. Par nombre d'upvotes (décroissant)
+    // 2. Par date de modification (récent en premier)
+    const sortedComments = visibleComments.sort((a, b) => {
+      // Parser les upvotes (JSON arrays)
+      let upvotesA = 0;
+      let upvotesB = 0;
+      
+      try {
+        upvotesA = JSON.parse(a.upvotes || '[]').length;
+      } catch { upvotesA = 0; }
+      
+      try {
+        upvotesB = JSON.parse(b.upvotes || '[]').length;
+      } catch { upvotesB = 0; }
+
+      // D'abord trier par upvotes (décroissant)
+      if (upvotesB !== upvotesA) {
+        return upvotesB - upvotesA;
+      }
+
+      // Si même nombre d'upvotes, trier par date de modification (récent en premier)
+      const dateA = new Date(a.modified || a.created).getTime();
+      const dateB = new Date(b.modified || b.created).getTime();
+      return dateB - dateA;
     });
 
     return json({
       articleId,
-      comments: allComments,
-      count: allComments.length
+      comments: sortedComments,
+      count: sortedComments.length,
+      totalComments: allComments.length, // Inclut les commentaires masqués
+      hiddenComments: allComments.length - sortedComments.length // Nombre de masqués
     });
   } catch (error) {
     return json({
@@ -169,6 +209,7 @@ comments.get("/:articleId", async ({ json, env, req }) => {
 comments.post("/:articleId", async ({ json, env, req, status }) => {
   const CommentsModel = CommentsTable(env);
   const { articleId } = req.param();
+  const url = new URL(req.url);
   
   try {
     const body = await req.json() as Partial<CommentsType>;
@@ -179,6 +220,8 @@ comments.post("/:articleId", async ({ json, env, req, status }) => {
       content: body.content || '',
       creator: body.creator || '',
       notes: 0,
+      upvotes: '[]', // Init avec tableau vide
+      signals: '[]', // Init avec tableau vide
       created: new Date().toISOString(),
       modified: new Date().toISOString(),
     });
@@ -188,14 +231,15 @@ comments.post("/:articleId", async ({ json, env, req, status }) => {
       const id = env.COMMENTS_DO.idFromName(articleId);
       const stub = env.COMMENTS_DO.get(id);
       
-      await stub.fetch(new Request('http://internal/notify', {
+      // L'URL est interne au DO - le chemin "/notify" sera intercepté par la méthode fetch() du DO
+      await stub.fetch('http://dummy/notify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type: 'comment_added',
           comment: newComment
         })
-      }));
+      });
     } catch (err) {
       console.error('[Comments] Error notifying Durable Object:', err);
       // Ne pas faire échouer la requête si la notification échoue
@@ -231,6 +275,235 @@ comments.delete("/:articleId/:commentId", async ({ json, env, req, status }) => 
   } catch (error) {
     status(500);
     return json({ success: false, error: String(error) });
+  }
+});
+
+// Route pour upvote un commentaire (toggle)
+comments.post("/:articleId/:commentId/upvote", async ({ json, env, req, status }) => {
+  const CommentsModel = CommentsTable(env);
+  const { commentId } = req.param();
+  const { userid } = await req.json() as { userid: string };
+
+  try {
+    const comment = await CommentsModel.findById(commentId);
+    
+    if (!comment) {
+      status(404);
+      return json({ success: false, message: 'Comment not found' });
+    }
+
+    // Parser le tableau JSON des upvotes
+    let upvotes: string[] = [];
+    try {
+      upvotes = JSON.parse(comment.upvotes || '[]');
+    } catch {
+      upvotes = [];
+    }
+
+    // Toggle upvote
+    const index = upvotes.indexOf(userid);
+    if (index > -1) {
+      // Remove upvote
+      upvotes.splice(index, 1);
+    } else {
+      // Add upvote
+      upvotes.push(userid);
+    }
+
+    // Mettre à jour le commentaire
+    const updated = await CommentsModel.update(commentId, {
+      upvotes: JSON.stringify(upvotes),
+      modified: new Date().toISOString()
+    });
+
+    // Notifier le Durable Object pour broadcaster la mise à jour
+    try {
+      const { articleId } = req.param();
+      const id = env.COMMENTS_DO.idFromName(articleId);
+      const stub = env.COMMENTS_DO.get(id);
+      
+      const updatedComment = await CommentsModel.findById(commentId);
+      
+      await stub.fetch('http://dummy/notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'comment_updated',
+          comment: updatedComment
+        })
+      });
+    } catch (err) {
+      console.error('[Comments] Error notifying Durable Object:', err);
+    }
+
+    return json({
+      success: true,
+      action: index > -1 ? 'removed' : 'added',
+      upvotesCount: upvotes.length,
+      upvotes: upvotes
+    });
+  } catch (error) {
+    status(500);
+    return json({ success: false, error: String(error) });
+  }
+});
+
+// Route pour signaler un commentaire (toggle)
+comments.post("/:articleId/:commentId/signal", async ({ json, env, req, status }) => {
+  const CommentsModel = CommentsTable(env);
+  const { commentId } = req.param();
+  const { userid } = await req.json() as { userid: string };
+
+  try {
+    const comment = await CommentsModel.findById(commentId);
+    
+    if (!comment) {
+      status(404);
+      return json({ success: false, message: 'Comment not found' });
+    }
+
+    // Parser le tableau JSON des signals
+    let signals: string[] = [];
+    try {
+      signals = JSON.parse(comment.signals || '[]');
+    } catch {
+      signals = [];
+    }
+
+    // Toggle signal
+    const index = signals.indexOf(userid);
+    if (index > -1) {
+      // Remove signal
+      signals.splice(index, 1);
+    } else {
+      // Add signal
+      signals.push(userid);
+    }
+
+    // Mettre à jour le commentaire
+    const updated = await CommentsModel.update(commentId, {
+      signals: JSON.stringify(signals),
+      modified: new Date().toISOString()
+    });
+
+    // Notifier le Durable Object pour broadcaster la mise à jour
+    try {
+      const { articleId } = req.param();
+      const id = env.COMMENTS_DO.idFromName(articleId);
+      const stub = env.COMMENTS_DO.get(id);
+      
+      const updatedComment = await CommentsModel.findById(commentId);
+      
+      await stub.fetch('http://dummy/notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'comment_updated',
+          comment: updatedComment
+        })
+      });
+    } catch (err) {
+      console.error('[Comments] Error notifying Durable Object:', err);
+    }
+
+    return json({
+      success: true,
+      action: index > -1 ? 'removed' : 'added',
+      signalsCount: signals.length,
+      signals: signals
+    });
+  } catch (error) {
+    status(500);
+    return json({ success: false, error: String(error) });
+  }
+});
+
+// Route pour récupérer les stats d'un commentaire (upvotes + signals)
+comments.get("/:articleId/:commentId/stats", async ({ json, env, req, status }) => {
+  const CommentsModel = CommentsTable(env);
+  const { commentId } = req.param();
+
+  try {
+    const comment = await CommentsModel.findById(commentId);
+    
+    if (!comment) {
+      status(404);
+      return json({ success: false, message: 'Comment not found' });
+    }
+
+    // Parser les tableaux JSON
+    let upvotes: string[] = [];
+    let signals: string[] = [];
+    try {
+      upvotes = JSON.parse(comment.upvotes || '[]');
+      signals = JSON.parse(comment.signals || '[]');
+    } catch {
+      upvotes = [];
+      signals = [];
+    }
+
+    return json({
+      success: true,
+      commentId: comment.id,
+      upvotesCount: upvotes.length,
+      signalsCount: signals.length,
+      upvotes: upvotes,
+      signals: signals
+    });
+  } catch (error) {
+    status(500);
+    return json({ success: false, error: String(error) });
+  }
+});
+
+// Route ADMIN pour voir les commentaires signalés (5+ signalements)
+comments.get("/:articleId/reported", async ({ json, env, req, status }) => {
+  const CommentsModel = CommentsTable(env);
+  const { articleId } = req.param();
+
+  try {
+    const allComments = await CommentsModel.findAll({
+      where: { articleId }
+    });
+
+    // Filtrer pour garder SEULEMENT ceux avec 5+ signalements
+    const reportedComments = allComments.filter(comment => {
+      let signalsCount = 0;
+      try {
+        signalsCount = JSON.parse(comment.signals || '[]').length;
+      } catch {
+        signalsCount = 0;
+      }
+      return signalsCount >= 5;
+    }).map(comment => {
+      // Ajouter le count de signals pour info
+      let signalsCount = 0;
+      try {
+        signalsCount = JSON.parse(comment.signals || '[]').length;
+      } catch {
+        signalsCount = 0;
+      }
+
+      return {
+        ...comment,
+        signalsCount // Ajouter pour faciliter l'affichage
+      };
+    });
+
+    // Trier par nombre de signalements (descendant)
+    reportedComments.sort((a, b) => b.signalsCount - a.signalsCount);
+
+    return json({
+      articleId,
+      reportedComments: reportedComments,
+      count: reportedComments.length
+    });
+  } catch (error) {
+    status(500);
+    return json({
+      error: 'Failed to fetch reported comments',
+      details: String(error)
+    });
   }
 });
 

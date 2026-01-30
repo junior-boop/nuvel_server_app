@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { Notes as NotesTable, UsersAccount } from "../../utils/tables";
+import { GroupsTable, Notes as NotesTable, UsersAccount } from "../../utils/tables";
 import { v4 as uuidv4 } from "uuid";
 import { IncludeOptions } from "../../utils/simpleorm";
 import { Notes } from "../../utils/db";
@@ -13,7 +13,7 @@ users.get("/", async ({ json, env, res }) => {
   console.log("je suis dans la joie");
 
   return json(await Users.findAll({
-    select : ["id", "email", "name", "first_name", "photo", "biography"]
+    select: ["id", "email", "name", "first_name", "photo", "biography"]
   }));
 });
 
@@ -37,28 +37,40 @@ users.get("/:userid/notes", async ({ json, env, res, req }) => {
 
   const Users = UsersAccount(env);
   const Notes = NotesTable(env);
+  const Groups = GroupsTable(env);
   const user = await Users.findOne({
-      where: {
-        id: userid,
-      },
-    })
+    where: {
+      id: userid,
+    },
+  })
 
-    const notes = await Notes.findAll({
-      where: {
-        creator: userid,
-      },
-      count : true
-    })
+  const notes = await Notes.findAll({
+    where: {
+      creator: userid,
+    },
+    count: true
+  })
+
+  const groups = await Groups.findAll({
+    where: {
+      userid: userid,
+    },
+    count: true
+  })
   return json({
-    ...user, 
-    notes
+    ...user,
+    notes,
+    groups
   })
 });
 
 users.post("/signin", async ({ req, res, json, env }) => {
   await UsersAccount(env).createTable();
   const Users = UsersAccount(env);
+  const Notes = NotesTable(env);
   const user = await req.json();
+
+
 
   try {
     const check_user_exist = await Users.findOne({
@@ -72,10 +84,24 @@ users.post("/signin", async ({ req, res, json, env }) => {
         ...check_user_exist,
         modified: new Date().toISOString(),
       });
-      return json({
-        message: "cet utilisateur existe deja",
-        data: modifiedUser,
-      });
+
+      if (modifiedUser) {
+        const notes = await Notes.findAll({
+          where: {
+            creator: modifiedUser?.id,
+          },
+          count: true
+        })
+        return json({
+          message: "cet utilisateur existe deja",
+          data: {
+            ...modifiedUser,
+            notes: {
+              count: notes.count
+            }
+          },
+        });
+      }
     }
 
     const data = await Users.create({
@@ -87,7 +113,12 @@ users.post("/signin", async ({ req, res, json, env }) => {
 
     return json({
       message: "un utilisateur a ete cree",
-      data: data,
+      data: {
+        ...data,
+        notes: {
+          count: 0
+        }
+      },
     });
   } catch (error) {
     console.log(error);
@@ -100,11 +131,10 @@ users.post("/signin", async ({ req, res, json, env }) => {
 
 users.put("/:userId/update-infos", async ({ req, res, env, json }) => {
   const Users = UsersAccount(env);
-  const formData = await req.parseBody();
   const userinfo = await req.json();
   const { userId } = req.param();
 
-  console.log(formData);
+  console.log(userinfo);
 
   try {
     const data = await Users.updateWhere(
@@ -126,5 +156,6 @@ users.put("/:userId/update-infos", async ({ req, res, env, json }) => {
       data: null,
     });
   }
+
 });
 export default users;

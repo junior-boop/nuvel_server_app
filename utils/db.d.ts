@@ -18,6 +18,9 @@ export type Notes = {
   lastSyncUpdate: string | Date;
   version: number;
   publishId: string | null;
+  lastSyncedAt: string; // Dernier timestamp de sync
+  deviceId: string;      // Device qui a fait la dernière modif
+  version: number;
 };
 
 export type User = {
@@ -26,13 +29,15 @@ export type User = {
   first_name: string;
   email: string;
   church_status: "Pastor" | "Elder" | "Deacon" | "Leader" | "Member";
-  domination: string;
+  association: string | null;
   biography: string;
+  country: string | null;
   photo: string;
   created: string;
   modified: string;
   lastlogin: string;
   lastlogout: string;
+
 };
 
 export type Groups = {
@@ -42,6 +47,9 @@ export type Groups = {
   created: Date;
   modified: Date;
   lastSyncUpdate: string | Date;
+  version: number;
+  lastSyncedAt: string; // Dernier timestamp de sync
+  deviceId: string;      // Device qui a fait la dernière modif
   version: number;
 };
 
@@ -66,6 +74,8 @@ export interface Comments {
   creator: string;
   content: string;
   notes: number;
+  upvotes: string; // JSON array of userids
+  signals: string; // JSON array of userids
   created: string;
   modified: string;
 }
@@ -78,12 +88,43 @@ export interface Appreciations {
 
 export interface SyncEvent {
   id: string;
-  userid: string;
-  deviceid: string;
-  noteid: string;
-  action: string;
+  userId: string;
+  deviceId: string;
+  entityType: 'note' | 'group';
+  entityId: string;
+  action: 'created' | 'updated' | 'deleted';
+  data: string; // JSON de l'entité
+  timestamp: string; // ISO timestamp
+  synced: number; // 0 = pas sync, 1 = syncé
+  created: string;
+}
+
+export interface SyncChange {
+  entityType: 'note' | 'group';
+  entityId: string;
+  action: 'created' | 'updated' | 'deleted';
+  data?: any;
   timestamp: string;
-  synced: boolean;
+  deviceId: string;
+}
+export interface SyncRequest {
+  userId: string;
+  deviceId: string;
+  lastSyncTimestamp?: string;
+  changes: SyncChange[];
+}
+export interface SyncResponse {
+  success: boolean;
+  timestamp: string;
+  changes: SyncChange[];
+  conflicts: SyncConflict[];
+}
+export interface SyncConflict {
+  entityType: string;
+  entityId: string;
+  localVersion: any;
+  serverVersion: any;
+  resolution: 'server_wins' | 'client_wins' | 'merged';
 }
 
 export interface Devices {
@@ -158,4 +199,31 @@ export interface ImagesType {
   size: number;
   created: Date | string;
   modified: Date | string;
+}
+
+export interface Country {
+  id: string;
+  name: string;
+  code_2: string;
+  code_3: string;
+  phoneCode: string;
+}
+
+export interface TokenBlacklist {
+  id: string;
+  token: string;
+  userId: string;
+  revokedAt: string;
+  expiresAt: string;
+}
+
+
+export interface HistoryType {
+  id: string;
+  articleid: string;
+  articleImage: string
+  articleTitle: string
+  articleCreatedAt: string | Date
+  userid: string;
+  lastReading: string;
 }

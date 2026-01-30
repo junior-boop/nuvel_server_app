@@ -8,6 +8,10 @@ import groups from "./routes/groups";
 import bible from "./routes/bible";
 import comments from "./routes/comments";
 import appreciation from "./routes/appreciation";
+import Countries from "./routes/countries";
+import auth from "./routes/auth";
+import { authMiddleware } from "./middleware/authMiddleware";
+
 
 // Importer et exporter les Durable Objects pour Cloudflare Workers
 export { CommentsDurableObject } from "./durable-objects/CommentsDurableObject";
@@ -925,6 +929,8 @@ app.route("/image", images);
 app.route("/bible", bible);
 app.route("/comments", comments);
 app.route("/appreciations", appreciation);
+app.route("/countries", Countries);
+app.route("/auth", auth);
 
 export default app;
 

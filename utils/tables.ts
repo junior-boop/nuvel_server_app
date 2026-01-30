@@ -9,6 +9,10 @@ import {
   SyncEvent as SyncEventType,
   Groups as GroupTable,
   ImagesType,
+  Country,
+  TokenBlacklist as TokenBlacklistType,
+  SyncEvent,
+  HistoryType,
 } from "./db";
 
 export type ENV = Partial<CloudflareBindings>;
@@ -21,13 +25,14 @@ export const UsersAccount = (env: ENV) => {
     first_name: "TEXT NOT NULL",
     // @ts-ignore
     church_status: "TEXT NOT NULL DEFAULT Member",
-    domination: "TEXT NULL",
+    association: "TEXT NULL",
     biography: "TEXT NULL",
     photo: "TEXT NULL",
     lastlogin: "TEXT NULL",
     lastlogout: "TEXT NULL",
     created: "DATETIME DEFAULT CURRENT_TIMESTAMP",
     modified: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+    country: "TEXT NULL",
   });
 
   (async () => await users.createTable())();
@@ -49,8 +54,9 @@ export const Notes = (env: ENV) => {
     publishId: "TEXT NULL", // le texte qui entre dans cet element c'est l'Id de la publication, la date de la dernier mise a jour et le la version de la publication.
     // @ts-ignore
     clientversion: "INTEGER NOT NULL DEFAULT 0",
-    // @ts-ignore
-    version: "INT NOT NULL DEFAULT 1",
+    lastSyncedAt: "TEXT", // NOUVEAU
+    deviceId: "TEXT",     // NOUVEAU
+    version: "INTEGER NOT NULL DEFAULT 1", // NOUVEAU
   });
 
   (async () => await userNotes.createTable())();
@@ -108,6 +114,10 @@ export const Comments = (env: ENV) => {
     // @ts-ignore
     notes: "INTEGER NOT NULL DEFAULT 0",
     creator: "TEXT NOT NULL",
+    // @ts-ignore
+    upvotes: "TEXT NOT NULL DEFAULT '[]'", // JSON array of userids who upvoted
+    // @ts-ignore
+    signals: "TEXT NOT NULL DEFAULT '[]'", // JSON array of userids who reported
     created: "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP",
     modified: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
   });
@@ -122,6 +132,8 @@ export const GroupsTable = (env: ENV) => {
     userid: "TEXT NOT NULL",
     name: "TEXT NOT NULL",
     lastSyncUpdate: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+    lastSyncedAt: "TEXT", // NOUVEAU
+    deviceId: "TEXT",     // NOUVEAU
     // @ts-ignore
     version: "INT NOT NULL DEFAULT 1",
     created: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
@@ -171,25 +183,60 @@ export const UserDevice = (env: ENV) => {
   return device;
 };
 
-export const SyncTable = (env: ENV) => {
-  const syncTable = db(env).createModel<SyncEventType>("sync_event", {
+export const SyncEventsTable = (env: ENV) => {
+  const syncEvents = db(env).createModel<SyncEvent>("sync_events", {
     id: "TEXT PRIMARY KEY NOT NULL",
-    deviceid: "TEXT NULL",
-    noteid: "TEXT NOT NULL",
-    userid: "TEXT NOT NULL",
+    userId: "TEXT NOT NULL",
+    deviceId: "TEXT NOT NULL",
+    entityType: "TEXT NOT NULL",
+    entityId: "TEXT NOT NULL",
     action: "TEXT NOT NULL",
-    // @ts-ignore
-    synced: "BOOLEAN NOT NULL DEFAULT 0",
-    timestamp: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+    data: "TEXT NOT NULL",
+    timestamp: "TEXT NOT NULL",
+    synced: "INTEGER NOT NULL DEFAULT 0",
+    created: "TEXT NOT NULL",
   });
-
-  (async () => await syncTable.createTable())();
-  return syncTable;
+  (async () => await syncEvents.createTable())();
+  return syncEvents;
 };
 
-// export const SyncLog = (env:ENV) => {
-//   const syncLog = db(env).createModel("sync_log", {
-//     id : "TEXT PRIMARY KEY NOT NULL",
-//     userid
-//   })
-// }
+export const CountryTable = (env: ENV) => {
+  const countryTable = db(env).createModel<Country>("countries", {
+    id: "TEXT PRIMARY KEY NOT NULL",
+    name: "TEXT NOT NULL",
+    code_2: "TEXT NOT NULL",
+    code_3: "TEXT NOT NULL",
+    phoneCode: "TEXT NOT NULL",
+  });
+
+  (async () => await countryTable.createTable())();
+  return countryTable;
+};
+
+export const TokenBlacklistTable = (env: ENV) => {
+  const tokenBlacklist = db(env).createModel<TokenBlacklistType>("token_blacklist", {
+    id: "TEXT PRIMARY KEY NOT NULL",
+    token: "TEXT NOT NULL UNIQUE",
+    userId: "TEXT NOT NULL",
+    revokedAt: "TEXT NOT NULL",
+    expiresAt: "TEXT NOT NULL",
+  });
+
+  (async () => await tokenBlacklist.createTable())();
+  return tokenBlacklist;
+};
+
+export const HistoryTable = (env: ENV) => {
+  const historyTable = db(env).createModel<HistoryType>("history", {
+    id: "TEXT PRIMARY KEY NOT NULL",
+    articleid: "TEXT NOT NULL",
+    articleImage: "TEXT NOT NULL",
+    articleTitle: "TEXT NOT NULL",
+    articleCreatedAt: "TEXT NOT NULL",
+    userid: "TEXT NOT NULL",
+    lastReading: "TEXT NOT NULL",
+  });
+
+  (async () => await historyTable.createTable())();
+  return historyTable;
+};

@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { GroupsTable, SyncTable } from "../../utils/tables";
+import { GroupsTable, SyncEventsTable as SyncTable } from "../../utils/tables";
 import { v4 as uuidv4 } from "uuid";
 import { Notes as NotesType, Groups as GroupesType } from "../../utils/db";
 
@@ -23,7 +23,7 @@ groups.get("/sync/:userid", async ({ json, req, res, env }) => {
 
   const result = await Synced.findAll({
     where: {
-      userid: userid,
+      userId: userid,
     },
   });
 
@@ -73,11 +73,12 @@ groups.post("/:id", async ({ json, req, env }) => {
     );
     Synced.create({
       id: uuidv4(),
-      userid: id,
-      noteid: data.id,
-      action: "UPDATE",
+      userId: id,
+      entityId: data.id,
+      entityType: "group",
+      action: "updated",
       timestamp: new Date().toISOString(),
-      synced: false,
+      synced: 0,
     });
     return json({
       sucess: true,
@@ -94,11 +95,12 @@ groups.post("/:id", async ({ json, req, env }) => {
   const result = await Groups.create(object);
   Synced.create({
     id: uuidv4(),
-    userid: data.userid,
-    noteid: result.id,
-    action: "CREATE",
+    userId: data.userid,
+    entityId: result.id,
+    entityType: "group",
+    action: "created",
     timestamp: new Date().toISOString(),
-    synced: false,
+    synced: 0,
   });
 
   return json({

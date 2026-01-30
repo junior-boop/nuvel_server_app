@@ -1,8 +1,9 @@
 import { Hono } from "hono";
-import { Articles as ArticlesTable, ENV, Publish } from "../../utils/tables";
+import { Articles as ArticlesTable, ENV, HistoryTable, HistoryTable, Publish } from "../../utils/tables";
 import { v4 as uuidv4 } from "uuid";
 import { ArticlesType, User as UsersType } from "../../utils/db";
 import { IncludeOptions } from "../../utils/simpleorm";
+import { Comments as CommentsTable } from "../../utils/tables";
 
 const article = new Hono<{ Bindings: CloudflareBindings }>();
 
@@ -13,37 +14,75 @@ const Article = (env: ENV) => {
 
 article.get("/", async ({ json, env, res }) => {
   const Articles = Publish(env);
+  const CommentsModel = CommentsTable(env);
   return json(
     await Articles.findAll({
       orderBy: { column: "createdAt", direction: "DESC" },
-      select: ["id","userid", "title", "description", "imageurl", "noteid", "topic", "createdAt", "updatedAt"],
+      select: ["id", "userid", "title", "description", "imageurl", "noteid", "topic", "createdAt", "updatedAt"],
       include: {
         model: "users",
         as: "user",
         foreignKey: "userid",
         localKey: "id",
         type: "belongsTo",
-        select : ["id", "name", "email", "church_status", "first_name", "photo" ],
+        select: ["id", "name", "email", "church_status", "first_name", "photo"],
       } as IncludeOptions<UsersType>,
     })
   );
 });
 
 
-article.get('/:articleid', async ({ json, env, text, req }) => {
+article.get('/:articleid', async ({ json, env, text, req, status }) => {
   const { articleid } = req.param();
   const Articles = Publish(env);
-  const results = await Articles.findById(articleid, {
-    include: {
-      model: "users",
-      as: "user",
-      foreignKey: "userid",
-      localKey: "id",
-      type: "belongsTo",
-      select : ["id", "name", "email", "church_status", "first_name", "photo" ],
-    } as IncludeOptions<UsersType>,
-  });
-  return json(results);
+  const history = HistoryTable(env)
+  const { userid } = req.queries()
+
+  try {
+    const check = await history.findOne({
+      where: {
+        articleid: articleid,
+        userid: userid,
+      },
+    })
+
+    if (check) {
+      await history.update(articleid,
+        {
+          lastReading: new Date().toISOString(),
+        }
+      )
+      return json({
+        message: "article deja dans l'Historique"
+      })
+    }
+
+    const results = await Articles.findById(articleid, {
+      include: {
+        model: "users",
+        as: "user",
+        foreignKey: "userid",
+        localKey: "id",
+        type: "belongsTo",
+        select: ["id", "name", "email", "church_status", "first_name", "photo"],
+      } as IncludeOptions<UsersType>,
+    });
+
+    await history.create({
+      id: uuidv4(),
+      articleid: articleid,
+      articleImage: results?.imageurl,
+      articleTitle: results?.title,
+      articleCreatedAt: results?.createdAt,
+      userid: userid,
+      lastReading: new Date().toISOString()
+    })
+    return json(results);
+  } catch (error) {
+    console.log(error)
+    status(500)
+    return text("il y a une erreur serveur")
+  }
 })
 
 article.get("/userid/:userid", async ({ json, env, text, req }) => {
@@ -90,9 +129,6 @@ article.post("/:userid/doc/:articleid", async ({ json, env, req, status }) => {
     });
   }
 
-  return json({
-    result,
-  });
 });
 
 article.put("/:userid/doc/:articleid", async ({ json, env, req, status }) => {

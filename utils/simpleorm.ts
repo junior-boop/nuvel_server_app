@@ -508,9 +508,16 @@ export abstract class Model {
     }
 
     if(count) {
-      const countSql = `SELECT COUNT(*) as count FROM ${tableName}`;
-      const countResult = await orm.get<{count : number}>(countSql);
-      return { results, count: countResult.count };
+      let countSql = `SELECT COUNT(*) as count FROM ${tableName}`;
+
+      if (Object.keys(where).length > 0) {
+        const whereClause = Object.keys(where)
+          .map((key) => `${key} = ?`)
+          .join(" AND ");
+        countSql += ` WHERE ${whereClause}`;
+      }
+      const countResult = await orm.get<{count : number}>(countSql, params);
+      return { results, count: countResult.count }
     }
 
     return results;
