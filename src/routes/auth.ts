@@ -68,7 +68,7 @@ auth.post('/login', async ({ req, res, json, env }) => {
       user.church_status
     );
 
-    const data = await Users.create({
+    const user_info = await Users.create({
       id: uuidv4(),
       ...user,
       lastlogin: new Date().toISOString(),
@@ -77,9 +77,9 @@ auth.post('/login', async ({ req, res, json, env }) => {
     });
 
     return json({
-      success: true,
-      user: {
-        ...data,
+      status: "success",
+      data: {
+        ...user_info,
         notes: {
           count: 0
         }
@@ -135,7 +135,7 @@ auth.post('/refresh', async (c) => {
     await blacklist.add(refreshToken, user.id, payload.exp);
 
     return c.json({
-      success: true,
+      status: "success",
       ...newTokens,
     });
   } catch (error) {

@@ -1,9 +1,10 @@
 import { Hono } from "hono";
-import { Articles as ArticlesTable, ENV, HistoryTable, HistoryTable, Publish } from "../../utils/tables";
+import { Articles as ArticlesTable, ENV, HistoryTable, Publish } from "../../utils/tables";
 import { v4 as uuidv4 } from "uuid";
 import { ArticlesType, User as UsersType } from "../../utils/db";
 import { IncludeOptions } from "../../utils/simpleorm";
 import { Comments as CommentsTable } from "../../utils/tables";
+import { authMiddleware, optionalAuth } from "../middleware/authMiddleware";
 
 const article = new Hono<{ Bindings: CloudflareBindings }>();
 
@@ -32,32 +33,17 @@ article.get("/", async ({ json, env, res }) => {
 });
 
 
-article.get('/:articleid', async ({ json, env, text, req, status }) => {
+// Route accessible même sans authentification
+// L'authentification est optionnelle - utilisée uniquement pour l'historique
+article.get('/:articleid', optionalAuth, async ({ json, env, text, req, status, get }) => {
   const { articleid } = req.param();
   const Articles = Publish(env);
-  const history = HistoryTable(env)
-  const { userid } = req.queries()
+  const history = HistoryTable(env);
+  const user = get('user') as { userId: string; email: string; role: string } | undefined; // Type proper
 
   try {
-    const check = await history.findOne({
-      where: {
-        articleid: articleid,
-        userid: userid,
-      },
-    })
-
-    if (check) {
-      await history.update(articleid,
-        {
-          lastReading: new Date().toISOString(),
-        }
-      )
-      return json({
-        message: "article deja dans l'Historique"
-      })
-    }
-
-    const results = await Articles.findById(articleid, {
+    // 1. Charger l'article avec les informations de l'utilisateur
+    const articleData = await Articles.findById(articleid, {
       include: {
         model: "users",
         as: "user",
@@ -68,20 +54,51 @@ article.get('/:articleid', async ({ json, env, text, req, status }) => {
       } as IncludeOptions<UsersType>,
     });
 
-    await history.create({
-      id: uuidv4(),
-      articleid: articleid,
-      articleImage: results?.imageurl,
-      articleTitle: results?.title,
-      articleCreatedAt: results?.createdAt,
-      userid: userid,
-      lastReading: new Date().toISOString()
-    })
-    return json(results);
+    if (!articleData) {
+      status(404);
+      return json({ error: "Article non trouvé" });
+    }
+
+    // 2. Si l'utilisateur est authentifié, gérer l'historique
+    if (user?.userId) {
+      const existingHistory = await history.findAll({
+        where: {
+          articleid: articleid,
+          userid: user.userId,
+        },
+      });
+
+      if (existingHistory && existingHistory.length > 0) {
+        // Mettre à jour la dernière lecture
+        await history.update(existingHistory[0].id, {
+          lastReading: new Date().toISOString(),
+        });
+      } else {
+        // Créer une nouvelle entrée d'historique
+        await history.create({
+          id: uuidv4(),
+          articleid: articleid,
+          articleImage: articleData?.imageurl ?? '',
+          articleTitle: articleData?.title ?? '',
+          articleCreatedAt: articleData?.createdAt ?? new Date().toISOString(),
+          userid: user.userId,
+          lastReading: new Date().toISOString()
+        });
+      }
+    }
+
+    return json({
+      success: true,
+      article: articleData,
+      historyTracked: !!user?.userId // Indique si l'historique a été suivi
+    });
   } catch (error) {
-    console.log(error)
-    status(500)
-    return text("il y a une erreur serveur")
+    console.log('[Articles] Error:', error);
+    status(500);
+    return json({
+      error: "Erreur serveur",
+      details: error instanceof Error ? error.message : 'Erreur inconnue'
+    });
   }
 })
 
