@@ -5,6 +5,7 @@ import { ArticlesType, User as UsersType } from "../../utils/db";
 import { IncludeOptions } from "../../utils/simpleorm";
 import { Comments as CommentsTable } from "../../utils/tables";
 import { authMiddleware, optionalAuth } from "../middleware/authMiddleware";
+import { getDB } from "../../utils/instant";
 
 const article = new Hono<{ Bindings: CloudflareBindings }>();
 
@@ -15,7 +16,11 @@ const Article = (env: ENV) => {
 
 article.get("/", async ({ json, env, res }) => {
   const Articles = Publish(env);
-  const CommentsModel = CommentsTable(env);
+
+  const db = getDB(env)
+
+  const articlesStats = await db.query({ articlesStats: {} })
+
   return json(
     await Articles.findAll({
       orderBy: { column: "createdAt", direction: "DESC" },
@@ -31,6 +36,16 @@ article.get("/", async ({ json, env, res }) => {
     })
   );
 });
+
+article.get("/stats", async ({ json, env, res }) => {
+  const db = getDB(env)
+
+  const articlesStats = await db.query({ articlesStats: {} })
+
+  return json({
+    stats: articlesStats
+  })
+})
 
 
 // Route accessible même sans authentification

@@ -7,6 +7,7 @@
 		"cf-typegen": "wrangler types --env-interface CloudflareBindings"
 	},
 	"dependencies": {
+		"@instantdb/admin": "^0.22.137",
 		"hono": "^4.9.8",
 		"uuid": "^13.0.0"
 	},

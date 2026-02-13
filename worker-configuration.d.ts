@@ -13,9 +13,13 @@ declare namespace Cloudflare {
         DB: D1Database;
     }
 }
+
 interface CloudflareBindings extends Cloudflare.Env {
     JWT_SECRET: string;
+    INSTANT_APP_ID: string;
+    INSTANT_ADMIN_TOKEN: string;
 }
+
 
 // Begin runtime types
 /*! *****************************************************************************
