@@ -5,7 +5,8 @@ import { ArticlesType, User as UsersType } from "../../utils/db";
 import { IncludeOptions } from "../../utils/simpleorm";
 import { Comments as CommentsTable } from "../../utils/tables";
 import { authMiddleware, optionalAuth } from "../middleware/authMiddleware";
-import { getDB } from "../../utils/instant";
+import { getDB, id } from "../../utils/instant";
+import { bumpVersion, arbitrateLWW } from "../../utils/syncState";
 
 const article = new Hono<{ Bindings: CloudflareBindings }>();
 
@@ -19,7 +20,9 @@ article.get("/", async ({ json, env, res }) => {
 
   const db = getDB(env)
 
-  const articlesStats = await db.query({ articlesStats: {} })
+
+
+
 
   return json(
     await Articles.findAll({
@@ -37,13 +40,96 @@ article.get("/", async ({ json, env, res }) => {
   );
 });
 
+article.get('/check', async ({ json, env, res }) => {
+  const db = getDB(env)
+  const Articles = Publish(env);
+
+  const createdArticleStats = async (articleId: string) => {
+    try {
+      const articleStats = await db.transact(db.tx.articlesStats[id()].create({
+        articleId: articleId,
+        commentCount: 0,
+        likeCount: 0,
+        viewCount: 0,
+        lastCommentAt: new Date(),
+        updatedAt: new Date(),
+        shareCount: 0,
+        signals: [],
+      }))
+
+      return articleStats.clientId
+    } catch (error) {
+      console.log(error)
+    }
+  }
+
+  for (let i = 0; i < (await Articles.findAll()).length; i++) {
+    const artId = (await Articles.findAll())[i].id
+    const article = await Articles.findById(artId as string)
+    const check = await db.query({
+      articlesStats: {
+        $: {
+          where: {
+            articleId: article?.id as string
+          }
+        }
+      }
+    })
+
+    if (check.articlesStats?.length === 0) {
+      await createdArticleStats(article?.id as string)
+    }
+  }
+
+  return json({
+    message: "done"
+  })
+})
+
 article.get("/stats", async ({ json, env, res }) => {
   const db = getDB(env)
 
-  const articlesStats = await db.query({ articlesStats: {} })
+  const stats = await db.query({
+    articlesStats: {
+      $: {
+        limit: 7,
+        // Similar to limit, order is limited to top-level namespaces right now
+      },
+    },
+  })
+
+  const sortedArticles = stats.articlesStats
+    .sort((a, b) => b.viewCount - a.viewCount);
+
+
+  const topArticles = await Promise.all(sortedArticles.map(async articles => {
+    const Articles = Publish(env)
+    try {
+      const article = await Articles.findById(articles.articleId, {
+        include: {
+          model: "users",
+          as: "user",
+          foreignKey: "userid",
+          localKey: "id",
+          type: "belongsTo",
+          select: ["id", "name", "email", "church_status", "first_name", "photo"],
+        } as IncludeOptions<UsersType>,
+      })
+      return {
+        ...articles,
+        article
+      }
+    } catch (error) {
+      console.log('[Articles] Error:', error);
+      return {
+        ...articles,
+        article: null
+      }
+    }
+  }))
 
   return json({
-    stats: articlesStats
+    stats: topArticles
   })
 })
 
@@ -148,9 +234,12 @@ article.post("/:userid/doc/:articleid", async ({ json, env, req, status }) => {
       updatedAt: new Date().toISOString(),
     });
 
+    const syncVersion = await bumpVersion(env, "publish", articleid, userid);
+
     return json({
       status: `/articles 200 OK succes`,
       data: result,
+      syncVersion,
     });
   } catch (err) {
     console.log("il a y une erreur : ", err);
@@ -165,10 +254,22 @@ article.post("/:userid/doc/:articleid", async ({ json, env, req, status }) => {
 
 article.put("/:userid/doc/:articleid", async ({ json, env, req, status }) => {
   const { articleid, userid } = req.param();
-  const article = await req.json();
+  const article = await req.json() as any;
   const Articles = Article(env);
 
   try {
+    const clientUpdatedAt = (article._updatedAt as string) ?? new Date().toISOString();
+    const decision = await arbitrateLWW(env, "articles", articleid, clientUpdatedAt, userid);
+    if (decision.applied === "server") {
+      const canonical = await Articles.findById(articleid);
+      return json({
+        status: `/articles 200 OK conflict`,
+        applied: "server",
+        currentVersion: decision.currentVersion,
+        canonical,
+      });
+    }
+
     const result = await Articles.updateWhere(
       { userid: userid },
       {
@@ -185,9 +286,12 @@ article.put("/:userid/doc/:articleid", async ({ json, env, req, status }) => {
       }
     );
 
+    const syncVersion = await bumpVersion(env, "articles", articleid, userid);
+
     return json({
       status: `/articles 200 OK succes`,
       data: result,
+      syncVersion,
     });
   } catch (err) {
     console.log("il a y une erreur : ", err);

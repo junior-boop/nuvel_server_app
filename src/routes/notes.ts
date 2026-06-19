@@ -3,6 +3,7 @@ import { Notes as NotesUser, SyncEventsTable as SyncTable } from "../../utils/ta
 import { v4 as uuidv4 } from "uuid";
 import { Notes as NotesType } from "../../utils/db";
 import { IncludeOptions } from "../../utils/simpleorm";
+import { bumpVersion, arbitrateLWW } from "../../utils/syncState";
 
 const notes = new Hono<{ Bindings: CloudflareBindings }>();
 
@@ -61,7 +62,7 @@ notes.post("/:id", async ({ json, req, env }) => {
   const Notes = NotesUser(env);
   const Synced = SyncTable(env);
   const { id } = req.param();
-  const data = (await req.json()) as NotesType;
+  const data = (await req.json()) as NotesType & { _updatedAt?: string };
 
   const check = await Notes.findOne({
     where: {
@@ -70,6 +71,25 @@ notes.post("/:id", async ({ json, req, env }) => {
   });
 
   if (check) {
+    const clientUpdatedAt = data._updatedAt ?? new Date().toISOString();
+    const decision = await arbitrateLWW(
+      env,
+      "notes",
+      data.id,
+      clientUpdatedAt,
+      data.creator
+    );
+
+    if (decision.applied === "server") {
+      return json({
+        message: "server wins",
+        applied: "server",
+        sucess: false,
+        currentVersion: decision.currentVersion,
+        canonical: check,
+      });
+    }
+
     const result = await Notes.updateWhere(
       {
         id: data.id,
@@ -90,11 +110,13 @@ notes.post("/:id", async ({ json, req, env }) => {
       timestamp: new Date().toISOString(),
       synced: 0,
     });
+    const newVersion = await bumpVersion(env, "notes", data.id, data.creator);
     return json({
       message: "note updated",
       check,
       sucess: true,
-      result
+      result,
+      syncVersion: newVersion,
     });
   }
 
@@ -115,11 +137,13 @@ notes.post("/:id", async ({ json, req, env }) => {
     timestamp: new Date().toISOString(),
     synced: 0,
   });
+  const newVersion = await bumpVersion(env, "notes", result.id, data.creator);
 
   return json({
     message: "note created",
     sucess: true,
-    result
+    result,
+    syncVersion: newVersion,
   });
 });
 

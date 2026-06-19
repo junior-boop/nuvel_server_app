@@ -218,6 +218,15 @@ export interface TokenBlacklist {
 }
 
 
+export interface SyncStateRow {
+  table_name: string;
+  element_id: string;
+  version: number;
+  updatedAt: string;
+  updatedBy: string;
+  deleted: 0 | 1;
+}
+
 export interface HistoryType {
   id: string;
   articleid: string;

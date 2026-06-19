@@ -11,6 +11,9 @@ import appreciation from "./routes/appreciation";
 import Countries from "./routes/countries";
 import auth from "./routes/auth";
 import { authMiddleware } from "./middleware/authMiddleware";
+import { SyncStateTable } from "../utils/tables";
+import { ensureSeed } from "../utils/syncState";
+import syncStateRoute from "./routes/syncState";
 
 
 // Importer et exporter les Durable Objects pour Cloudflare Workers
@@ -18,6 +21,18 @@ export { CommentsDurableObject } from "./durable-objects/CommentsDurableObject";
 export { AppreciationsDurableObject } from "./durable-objects/AppreciationsDurableObject";
 
 const app = new Hono<{ Bindings: CloudflareBindings }>();
+
+// Cold-start: créer la table sync_state et seeder les données existantes.
+// Le middleware ne s'exécute qu'une seule fois grâce au flag interne `ensureSeed`.
+app.use("*", async (c, next) => {
+  try {
+    SyncStateTable(c.env);
+    await ensureSeed(c.env);
+  } catch (e) {
+    console.log("[sync_state] init middleware error:", e);
+  }
+  await next();
+});
 
 app.get("/", ({ json }) => {
   const teste = {
@@ -931,6 +946,7 @@ app.route("/comments", comments);
 app.route("/appreciations", appreciation);
 app.route("/countries", Countries);
 app.route("/auth", auth);
+app.route("/sync-state", syncStateRoute);
 
 export default app;
 

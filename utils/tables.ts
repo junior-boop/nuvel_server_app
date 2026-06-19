@@ -13,6 +13,7 @@ import {
   TokenBlacklist as TokenBlacklistType,
   SyncEvent,
   HistoryType,
+  SyncStateRow,
 } from "./db";
 
 export type ENV = Partial<CloudflareBindings>;
@@ -224,6 +225,36 @@ export const TokenBlacklistTable = (env: ENV) => {
 
   (async () => await tokenBlacklist.createTable())();
   return tokenBlacklist;
+};
+
+export const SyncStateTable = (env: ENV) => {
+  const syncState = db(env).createModel<SyncStateRow>("sync_state", {
+    // @ts-ignore — composite PK enforced manually below
+    table_name: "TEXT NOT NULL",
+    element_id: "TEXT NOT NULL",
+    // @ts-ignore
+    version: "INTEGER NOT NULL DEFAULT 1",
+    updatedAt: "TEXT NOT NULL",
+    updatedBy: "TEXT NOT NULL",
+    // @ts-ignore
+    deleted: "INTEGER NOT NULL DEFAULT 0",
+  });
+
+  (async () => {
+    const D1 = (env as any).DB as D1Database | undefined;
+    if (!D1) return;
+    try {
+      await D1.exec(
+        "CREATE TABLE IF NOT EXISTS sync_state (table_name TEXT NOT NULL, element_id TEXT NOT NULL, version INTEGER NOT NULL DEFAULT 1, updatedAt TEXT NOT NULL, updatedBy TEXT NOT NULL, deleted INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (table_name, element_id))"
+      );
+      await D1.exec("CREATE INDEX IF NOT EXISTS idx_sync_state_version ON sync_state(version)");
+      await D1.exec("CREATE INDEX IF NOT EXISTS idx_sync_state_table ON sync_state(table_name)");
+    } catch (e) {
+      console.log("[sync_state] table init error:", e);
+    }
+  })();
+
+  return syncState;
 };
 
 export const HistoryTable = (env: ENV) => {

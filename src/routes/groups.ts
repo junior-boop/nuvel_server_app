@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { GroupsTable, SyncEventsTable as SyncTable } from "../../utils/tables";
 import { v4 as uuidv4 } from "uuid";
 import { Notes as NotesType, Groups as GroupesType } from "../../utils/db";
+import { bumpVersion, arbitrateLWW } from "../../utils/syncState";
 
 const groups = new Hono<{ Bindings: CloudflareBindings }>();
 
@@ -51,7 +52,8 @@ groups.post("/:id", async ({ json, req, env }) => {
   const Groups = GroupsTable(env);
   const Synced = SyncTable(env);
   const { id } = req.param();
-  const data = (await req.json()) as GroupesType;
+  const data = (await req.json()) as GroupesType & { _updatedAt?: string };
+
 
   const check = await Groups.findOne({
     where: {
@@ -60,6 +62,24 @@ groups.post("/:id", async ({ json, req, env }) => {
   });
 
   if (check) {
+    const clientUpdatedAt = data._updatedAt ?? new Date().toISOString();
+    const decision = await arbitrateLWW(
+      env,
+      "groupes",
+      data.id,
+      clientUpdatedAt,
+      data.userid
+    );
+
+    if (decision.applied === "server") {
+      return json({
+        applied: "server",
+        sucess: false,
+        currentVersion: decision.currentVersion,
+        canonical: check,
+      });
+    }
+
     const result = await Groups.updateWhere(
       {
         id: data.id,
@@ -73,15 +93,17 @@ groups.post("/:id", async ({ json, req, env }) => {
     );
     Synced.create({
       id: uuidv4(),
-      userId: id,
+      userId: data.userid,
       entityId: data.id,
       entityType: "group",
       action: "updated",
       timestamp: new Date().toISOString(),
       synced: 0,
     });
+    const newVersion = await bumpVersion(env, "groupes", data.id, data.userid);
     return json({
       sucess: true,
+      syncVersion: newVersion,
     });
   }
 
@@ -102,9 +124,11 @@ groups.post("/:id", async ({ json, req, env }) => {
     timestamp: new Date().toISOString(),
     synced: 0,
   });
+  const newVersion = await bumpVersion(env, "groupes", result.id, data.userid);
 
   return json({
     sucess: true,
+    syncVersion: newVersion,
   });
 });
 
