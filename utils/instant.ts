@@ -13,6 +13,30 @@ export function getDB(env: CloudflareBindings) {
                 shareCount: i.number(),
                 signals: i.json(),
             }),
+            comments: i.entity({
+                id: i.string().unique().indexed(),
+                articleId: i.string().indexed(),
+                creator: i.json(),
+                content: i.string(),
+                notes: i.number(),
+                upvotes: i.json(),
+                signals: i.json(),
+                created: i.date().indexed(),
+                modified: i.date().indexed(),
+            }),
+            notifications: i.entity({
+                id: i.string().unique().indexed(),
+                recipientUserId: i.string().indexed(),
+                type: i.string().indexed(),
+                title: i.string(),
+                body: i.string(),
+                data: i.json(),
+                read: i.boolean().indexed(),
+                actorUserId: i.string().optional(),
+                articleId: i.string().optional(),
+                commentId: i.string().optional(),
+                createdAt: i.date().indexed(),
+            }),
         }
     })
 

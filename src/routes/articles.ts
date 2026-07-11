@@ -20,10 +20,6 @@ article.get("/", async ({ json, env, res }) => {
 
   const db = getDB(env)
 
-
-
-
-
   return json(
     await Articles.findAll({
       orderBy: { column: "createdAt", direction: "DESC" },
@@ -115,9 +111,13 @@ article.get("/stats", async ({ json, env, res }) => {
           select: ["id", "name", "email", "church_status", "first_name", "photo"],
         } as IncludeOptions<UsersType>,
       })
+      // body et appreciation retirés de la réponse liste — récupérés via GET /articles/:id
+      const lightArticle = article
+        ? (() => { const { body, appreciation, ...rest } = article as any; return rest; })()
+        : null;
       return {
         ...articles,
-        article
+        article: lightArticle
       }
     } catch (error) {
       console.log('[Articles] Error:', error);

@@ -38,6 +38,11 @@
 				"name": "APPRECIATIONS_DO",
 				"class_name": "AppreciationsDurableObject",
 				"script_name": "nuvelserver"
+			},
+			{
+				"name": "NOTIFICATIONS_DO",
+				"class_name": "NotificationsDurableObject",
+				"script_name": "nuvelserver"
 			}
 		]
 	},
@@ -52,8 +57,34 @@
 				"CommentsDurableObject",
 				"AppreciationsDurableObject"
 			]
+		},
+		{
+			"tag": "v2",
+			"new_sqlite_classes": [
+				"NotificationsDurableObject"
+			]
 		}
 	],
+	/**
+	 * Queues
+	 * Docs: https://developers.cloudflare.com/queues/
+	 */
+	"queues": {
+		"producers": [
+			{
+				"binding": "NOTIFICATIONS_QUEUE",
+				"queue": "notifications-queue"
+			}
+		],
+		"consumers": [
+			{
+				"queue": "notifications-queue",
+				"max_batch_size": 10,
+				"max_batch_timeout": 5,
+				"max_retries": 3
+			}
+		]
+	},
 	/**
 	 * Smart Placement
 	 * Docs: https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement

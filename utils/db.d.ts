@@ -236,3 +236,13 @@ export interface HistoryType {
   userid: string;
   lastReading: string;
 }
+
+export interface PushToken {
+  id: string;
+  userid: string;
+  token: string;
+  platform: "ios" | "android" | "web";
+  deviceId: string;
+  created: string;
+  modified: string;
+}

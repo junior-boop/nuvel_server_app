@@ -14,11 +14,14 @@ import { authMiddleware } from "./middleware/authMiddleware";
 import { SyncStateTable } from "../utils/tables";
 import { ensureSeed } from "../utils/syncState";
 import syncStateRoute from "./routes/syncState";
+import notifications from "./routes/notifications";
+import { queueHandler } from "./queue-consumer";
 
 
 // Importer et exporter les Durable Objects pour Cloudflare Workers
 export { CommentsDurableObject } from "./durable-objects/CommentsDurableObject";
 export { AppreciationsDurableObject } from "./durable-objects/AppreciationsDurableObject";
+export { NotificationsDurableObject } from "./durable-objects/NotificationsDurableObject";
 
 const app = new Hono<{ Bindings: CloudflareBindings }>();
 
@@ -947,6 +950,10 @@ app.route("/appreciations", appreciation);
 app.route("/countries", Countries);
 app.route("/auth", auth);
 app.route("/sync-state", syncStateRoute);
+app.route("/notifications", notifications);
 
-export default app;
+export default {
+  fetch: app.fetch,
+  queue: queueHandler,
+};
 

@@ -1,0 +1,1 @@
+This folder contains the built output assets for the worker "nuvelserver" generated at 2026-07-11T09:42:07.966Z.

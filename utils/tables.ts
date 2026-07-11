@@ -14,6 +14,7 @@ import {
   SyncEvent,
   HistoryType,
   SyncStateRow,
+  PushToken,
 } from "./db";
 
 export type ENV = Partial<CloudflareBindings>;
@@ -255,6 +256,21 @@ export const SyncStateTable = (env: ENV) => {
   })();
 
   return syncState;
+};
+
+export const PushTokensTable = (env: ENV) => {
+  const pushTokens = db(env).createModel<PushToken>("push_tokens", {
+    id: "TEXT PRIMARY KEY NOT NULL",
+    userid: "TEXT NOT NULL",
+    token: "TEXT NOT NULL UNIQUE",
+    platform: "TEXT NOT NULL",
+    deviceId: "TEXT NOT NULL",
+    created: "DATETIME DEFAULT CURRENT_TIMESTAMP",
+    modified: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+  });
+
+  (async () => await pushTokens.createTable())();
+  return pushTokens;
 };
 
 export const HistoryTable = (env: ENV) => {
