@@ -246,3 +246,19 @@ export interface PushToken {
   created: string;
   modified: string;
 }
+
+export interface ErrorLog {
+  id: string;
+  message: string;
+  stack: string | null;
+  level: "fatal" | "error" | "warning";
+  source: "client" | "server";
+  platform: "ios" | "android" | "web" | "unknown";
+  appVersion: string | null;
+  environment: "development" | "production";
+  userId: string | null;
+  screen: string | null;
+  extra: string | null; // JSON stringifié
+  resolved: 0 | 1;
+  created: string;
+}

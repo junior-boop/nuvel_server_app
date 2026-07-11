@@ -10,6 +10,8 @@ declare namespace Cloudflare {
 		JWT_SECRET: "LE_SERVICE_POUR_LA_GLOIRE_DE_DIEU";
 		INSTANT_APP_ID: "8eb49905-ea60-4e8f-9275-e9326a0bf0f3";
 		INSTANT_ADMIN_TOKEN: "19360b88-da49-49c4-910f-6d244cd9e4a4";
+		ADMIN_EMAIL: "admin@nuvel.app";
+		ADMIN_PASSWORD: "changeme-nuvel-admin";
 		COMMENTS_DO: DurableObjectNamespace /* CommentsDurableObject from nuvelserver */;
 		APPRECIATIONS_DO: DurableObjectNamespace /* AppreciationsDurableObject from nuvelserver */;
 		NOTIFICATIONS_DO: DurableObjectNamespace /* NotificationsDurableObject from nuvelserver */;

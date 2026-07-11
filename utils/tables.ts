@@ -15,6 +15,7 @@ import {
   HistoryType,
   SyncStateRow,
   PushToken,
+  ErrorLog,
 } from "./db";
 
 export type ENV = Partial<CloudflareBindings>;
@@ -271,6 +272,28 @@ export const PushTokensTable = (env: ENV) => {
 
   (async () => await pushTokens.createTable())();
   return pushTokens;
+};
+
+export const ErrorLogsTable = (env: ENV) => {
+  const errorLogs = db(env).createModel<ErrorLog>("error_logs", {
+    id: "TEXT PRIMARY KEY NOT NULL",
+    message: "TEXT NOT NULL",
+    stack: "TEXT NULL",
+    level: "TEXT NOT NULL",
+    source: "TEXT NOT NULL",
+    platform: "TEXT NOT NULL",
+    appVersion: "TEXT NULL",
+    environment: "TEXT NOT NULL",
+    userId: "TEXT NULL",
+    screen: "TEXT NULL",
+    extra: "TEXT NULL",
+    // @ts-ignore
+    resolved: "INTEGER NOT NULL DEFAULT 0",
+    created: "DATETIME DEFAULT CURRENT_TIMESTAMP",
+  });
+
+  (async () => await errorLogs.createTable())();
+  return errorLogs;
 };
 
 export const HistoryTable = (env: ENV) => {

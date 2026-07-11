@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { cors } from "hono/cors";
 import { serveStatic } from "hono/cloudflare-workers";
 import users from "./routes/users";
 import article from "./routes/articles";
@@ -15,6 +16,8 @@ import { SyncStateTable } from "../utils/tables";
 import { ensureSeed } from "../utils/syncState";
 import syncStateRoute from "./routes/syncState";
 import notifications from "./routes/notifications";
+import errors from "./routes/errors";
+import admin from "./routes/admin";
 import { queueHandler } from "./queue-consumer";
 
 
@@ -24,6 +27,9 @@ export { AppreciationsDurableObject } from "./durable-objects/AppreciationsDurab
 export { NotificationsDurableObject } from "./durable-objects/NotificationsDurableObject";
 
 const app = new Hono<{ Bindings: CloudflareBindings }>();
+
+// Autorise le dashboard admin (origine distincte) à appeler l'API depuis le navigateur
+app.use("*", cors());
 
 // Cold-start: créer la table sync_state et seeder les données existantes.
 // Le middleware ne s'exécute qu'une seule fois grâce au flag interne `ensureSeed`.
@@ -951,6 +957,8 @@ app.route("/countries", Countries);
 app.route("/auth", auth);
 app.route("/sync-state", syncStateRoute);
 app.route("/notifications", notifications);
+app.route("/errors", errors);
+app.route("/admin", admin);
 
 export default {
   fetch: app.fetch,

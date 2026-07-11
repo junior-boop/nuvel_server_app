@@ -3,6 +3,8 @@ import { streamSSE } from "hono/streaming";
 import { Comments as CommentsTable } from "../../utils/tables";
 import { v4 as uuidv4 } from "uuid";
 import { Comments as CommentsType } from "../../utils/db";
+import { authMiddleware } from "../middleware/authMiddleware";
+import { requireAdmin } from "../middleware/roleMiddleware";
 
 const comments = new Hono<{ Bindings: CloudflareBindings }>();
 
@@ -457,7 +459,7 @@ comments.get("/:articleId/:commentId/stats", async ({ json, env, req, status }) 
 });
 
 // Route ADMIN pour voir les commentaires signalés (5+ signalements)
-comments.get("/:articleId/reported", async ({ json, env, req, status }) => {
+comments.get("/:articleId/reported", authMiddleware, requireAdmin, async ({ json, env, req, status }) => {
   const CommentsModel = CommentsTable(env);
   const { articleId } = req.param();
 
@@ -504,6 +506,57 @@ comments.get("/:articleId/reported", async ({ json, env, req, status }) => {
       error: 'Failed to fetch reported comments',
       details: String(error)
     });
+  }
+});
+
+// Route ADMIN pour voir tous les commentaires signalés (1+ signalement), tous articles confondus
+comments.get("/reported", authMiddleware, requireAdmin, async ({ json, env, status }) => {
+  const CommentsModel = CommentsTable(env);
+
+  try {
+    const allComments = await CommentsModel.findAll();
+
+    const reportedComments = allComments
+      .map((comment) => {
+        let signalsCount = 0;
+        try {
+          signalsCount = JSON.parse(comment.signals || "[]").length;
+        } catch {
+          signalsCount = 0;
+        }
+        return { ...comment, signalsCount };
+      })
+      .filter((comment) => comment.signalsCount >= 1)
+      .sort((a, b) => b.signalsCount - a.signalsCount);
+
+    return json({
+      reportedComments,
+      count: reportedComments.length,
+    });
+  } catch (error) {
+    status(500);
+    return json({
+      error: "Failed to fetch reported comments",
+      details: String(error),
+    });
+  }
+});
+
+// Route ADMIN pour supprimer un commentaire signalé
+comments.delete("/:commentId/admin", authMiddleware, requireAdmin, async ({ json, env, req, status }) => {
+  const CommentsModel = CommentsTable(env);
+  const { commentId } = req.param();
+
+  try {
+    const deleted = await CommentsModel.delete(commentId);
+    if (!deleted) {
+      status(404);
+      return json({ success: false, message: "Commentaire non trouvé" });
+    }
+    return json({ success: true });
+  } catch (error) {
+    status(500);
+    return json({ success: false, error: String(error) });
   }
 });
 
