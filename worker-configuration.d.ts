@@ -4,7 +4,7 @@
 declare namespace Cloudflare {
 	interface GlobalProps {
 		mainModule: typeof import("./src/index");
-		durableNamespaces: "CommentsDurableObject" | "AppreciationsDurableObject" | "NotificationsDurableObject";
+		durableNamespaces: "CommentsDurableObject" | "AppreciationsDurableObject" | "NotificationsDurableObject" | "TextCorrectionDurableObject";
 	}
 	interface Env {
 		JWT_SECRET: "LE_SERVICE_POUR_LA_GLOIRE_DE_DIEU";
@@ -15,9 +15,11 @@ declare namespace Cloudflare {
 		COMMENTS_DO: DurableObjectNamespace /* CommentsDurableObject from nuvelserver */;
 		APPRECIATIONS_DO: DurableObjectNamespace /* AppreciationsDurableObject from nuvelserver */;
 		NOTIFICATIONS_DO: DurableObjectNamespace /* NotificationsDurableObject from nuvelserver */;
+		TEXT_CORRECTION_DO: DurableObjectNamespace /* TextCorrectionDurableObject from nuvelserver */;
 		STORAGE: R2Bucket;
 		DB: D1Database;
 		NOTIFICATIONS_QUEUE: Queue;
+		AI: Ai;
 	}
 }
 interface CloudflareBindings extends Cloudflare.Env {}

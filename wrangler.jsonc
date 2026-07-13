@@ -43,6 +43,11 @@
 				"name": "NOTIFICATIONS_DO",
 				"class_name": "NotificationsDurableObject",
 				"script_name": "nuvelserver"
+			},
+			{
+				"name": "TEXT_CORRECTION_DO",
+				"class_name": "TextCorrectionDurableObject",
+				"script_name": "nuvelserver"
 			}
 		]
 	},
@@ -63,8 +68,21 @@
 			"new_sqlite_classes": [
 				"NotificationsDurableObject"
 			]
+		},
+		{
+			"tag": "v3",
+			"new_sqlite_classes": [
+				"TextCorrectionDurableObject"
+			]
 		}
 	],
+	/**
+	 * Workers AI
+	 * Docs: https://developers.cloudflare.com/workers-ai/
+	 */
+	"ai": {
+		"binding": "AI"
+	},
 	/**
 	 * Queues
 	 * Docs: https://developers.cloudflare.com/queues/
@@ -104,8 +122,8 @@
 		"JWT_SECRET": "LE_SERVICE_POUR_LA_GLOIRE_DE_DIEU",
 		"INSTANT_APP_ID": "8eb49905-ea60-4e8f-9275-e9326a0bf0f3",
 		"INSTANT_ADMIN_TOKEN": "19360b88-da49-49c4-910f-6d244cd9e4a4",
-		"ADMIN_EMAIL": "admin@nuvel.app",
-		"ADMIN_PASSWORD": "changeme-nuvel-admin"
+		"ADMIN_EMAIL": "juniorseppo3@gmail.com",
+		"ADMIN_PASSWORD": "admin1234",
 	}
 	/**
 	 * Note: Use secrets to store sensitive data.

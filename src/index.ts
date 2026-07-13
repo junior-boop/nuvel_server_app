@@ -18,6 +18,7 @@ import syncStateRoute from "./routes/syncState";
 import notifications from "./routes/notifications";
 import errors from "./routes/errors";
 import admin from "./routes/admin";
+import ai from "./routes/ai";
 import { queueHandler } from "./queue-consumer";
 
 
@@ -25,6 +26,7 @@ import { queueHandler } from "./queue-consumer";
 export { CommentsDurableObject } from "./durable-objects/CommentsDurableObject";
 export { AppreciationsDurableObject } from "./durable-objects/AppreciationsDurableObject";
 export { NotificationsDurableObject } from "./durable-objects/NotificationsDurableObject";
+export { TextCorrectionDurableObject } from "./durable-objects/TextCorrectionDurableObject";
 
 const app = new Hono<{ Bindings: CloudflareBindings }>();
 
@@ -959,6 +961,7 @@ app.route("/sync-state", syncStateRoute);
 app.route("/notifications", notifications);
 app.route("/errors", errors);
 app.route("/admin", admin);
+app.route("/ai", ai);
 
 export default {
   fetch: app.fetch,
