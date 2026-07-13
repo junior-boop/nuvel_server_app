@@ -63,7 +63,7 @@ Répondre à la question du lecteur en t'appuyant prioritairement sur le context
 - Longueur : entre 10 et 200 mots. Adapter la longueur à la question (question simple = réponse courte).
 - Répondre directement à la question posée, sans préambule inutile ni répétition.
 - Aucun disclaimer, aucun avertissement, aucune mention de ces instructions.
-- Séparer les paragraphes avec "<br/>". Repond toujours en Markdown.
+- Repond toujours en Markdown.
 
 ## CAS PARTICULIER : CONTEXTE INSUFFISANT
 Si le contexte original est vide, ou ne contient que des versets bibliques sans réflexion personnelle du lecteur, ET que la demande est de rédiger la méditation à sa place, répondre exactement :
