@@ -78,7 +78,8 @@ En revanche, si le lecteur pose une question précise sur un verset (sens d'un m
       ],
     });
 
-    const answer = (result as { response?: string }).response?.trim() ?? "";
+    const output = result as { response?: string; choices?: { message?: { content?: string } }[] };
+    const answer = (output.response ?? output.choices?.[0]?.message?.content ?? "").trim();
     return json({ success: true, answer });
   } catch (err) {
     console.error("[AI Agent] Erreur:", err);
