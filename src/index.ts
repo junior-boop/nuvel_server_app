@@ -53,6 +53,21 @@ app.get("/", ({ json }) => {
   return json(teste);
 });
 
+app.get("/.well-known/assetlinks.json", ({ json }) => {
+  return json([
+    {
+      relation: ["delegate_permission/common.handle_all_urls"],
+      target: {
+        namespace: "android_app",
+        package_name: "com.junior41.nuveltwyoptbpmwgsox1tafyp",
+        sha256_cert_fingerprints: [
+          "REPLACE_WITH_SHA256_FINGERPRINT",
+        ],
+      },
+    },
+  ]);
+});
+
 app.get("/health", ({ json, env }) => {
   return json({
     status: true,

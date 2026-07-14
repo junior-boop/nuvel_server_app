@@ -48,7 +48,7 @@ images.post("/:userid", async ({ req, res, json, env, text, status }) => {
       userid: userid,
       size: object.size,
       mineType: object.minetype,
-      url: `${hostname}/image/g/${object.name}`,
+      url: `https://${hostname}/image/g/${object.name}`,
       created: new Date().toISOString(),
       modified: new Date().toISOString(),
     });
