@@ -45,6 +45,20 @@ notes.get("/sync/:userid", async ({ json, req, res, env }) => {
   });
 });
 
+notes.get("/view/:id", async ({ json, req, env, status }) => {
+  const Notes = NotesUser(env);
+  const { id } = req.param();
+
+  const note = await Notes.findOne({ where: { id } });
+
+  if (!note) {
+    status(404);
+    return json({ error: "Note non trouvée" });
+  }
+
+  return json({ note });
+});
+
 notes.get("/:creator", async ({ json, req, env }) => {
   const Notes = NotesUser(env);
   const { creator } = req.param();
