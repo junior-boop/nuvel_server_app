@@ -25,7 +25,7 @@ async function sendExpoPush(tokens: string[], title: string, body: string, data:
   }));
 
   try {
-    await fetch(EXPO_PUSH_URL, {
+    const response = await fetch(EXPO_PUSH_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -33,6 +33,22 @@ async function sendExpoPush(tokens: string[], title: string, body: string, data:
         "Accept-Encoding": "gzip, deflate",
       },
       body: JSON.stringify(messages),
+    });
+
+    const result = await response.json<{
+      data?: { status: string; message?: string; details?: { error?: string } }[];
+      errors?: unknown[];
+    }>();
+
+    if (!response.ok) {
+      console.error("[Queue] Expo push request failed:", response.status, result);
+      return;
+    }
+
+    result.data?.forEach((ticket, i) => {
+      if (ticket.status === "error") {
+        console.error("[Queue] Expo push ticket error:", tokens[i], ticket.message, ticket.details);
+      }
     });
   } catch (err) {
     console.error("[Queue] Error sending Expo push:", err);
