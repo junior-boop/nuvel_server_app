@@ -3,7 +3,7 @@ import { DurableObject } from "cloudflare:workers";
 /**
  * TextCorrectionDurableObject - Un Durable Object par utilisateur.
  * Reçoit un texte, le corrige (orthographe/grammaire/ponctuation) via
- * Workers AI (@cf/google/gemma-2b-it-lora) et renvoie le résultat.
+ * Workers AI (@cf/google/gemma-4-26b-a4b-it) et renvoie le résultat.
  */
 export class TextCorrectionDurableObject extends DurableObject {
   protected env: CloudflareBindings;
@@ -30,7 +30,7 @@ export class TextCorrectionDurableObject extends DurableObject {
         );
       }
 
-      const result = await this.env.AI.run("@cf/google/gemma-2b-it-lora", {
+      const result = await this.env.AI.run("@cf/google/gemma-4-26b-a4b-it" as keyof AiModels, {
         messages: [
           {
             role: "system",
