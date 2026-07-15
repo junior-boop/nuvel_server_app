@@ -41,7 +41,8 @@ export class TextCorrectionDurableObject extends DurableObject {
         ],
       });
 
-      const corrected = (result as { response?: string }).response?.trim() ?? "";
+      const output = result as { response?: string; choices?: { message?: { content?: string } }[] };
+      const corrected = (output.response ?? output.choices?.[0]?.message?.content ?? "").trim();
 
       return new Response(
         JSON.stringify({ success: true, original: text, corrected }),
