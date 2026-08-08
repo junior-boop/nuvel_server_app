@@ -4,7 +4,7 @@
  */
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "nuvelserver",
+	"name": "nuvelserverapp",
 	"main": "src/index.ts",
 	"compatibility_date": "2025-09-19",
 	"observability": {
