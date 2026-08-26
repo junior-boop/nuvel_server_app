@@ -72,7 +72,7 @@ Si le contexte original est vide, ou ne contient que des versets bibliques sans 
 En revanche, si le lecteur pose une question précise sur un verset (sens d'un mot, contexte historique, lien avec un autre passage), y répondre normalement même sans méditation préalable.`;
 
   try {
-    const result = await env.AI.run("google/gemini-3-flash" as keyof AiModels, {
+    const result = await env.AI.run("google/gemini-3.1-flash-lite" as keyof AiModels, {
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: question },

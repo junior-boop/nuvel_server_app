@@ -1,0 +1,85 @@
+### Tests HTTP - routes IA (/ai/correct et /ai/agent)
+### Nécessite l'extension VSCode "REST Client" (humao.rest-client)
+### Lancer le serveur en local avant de tester : npm run dev  (wrangler dev sur 127.0.0.1:8787)
+
+@baseUrl = http://127.0.0.1:8787
+
+### 1. Login — crée l'utilisateur de test s'il n'existe pas encore, renvoie un accessToken
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "test.ai@nuvel.dev",
+  "name": "Test AI",
+  "first_name": "Test"
+}
+
+### 2. Récupère le token renvoyé par la requête ci-dessus
+@accessToken = {{login.response.body.accessToken}}
+
+
+### 3. POST /ai/correct — correction orthographique/grammaticale (cas nominal)
+POST {{baseUrl}}/ai/correct
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "text": "Bonjour, je m'apelle Jean et je vait bien, merci beaucoup."
+}
+
+
+### 4. POST /ai/correct — champ "text" manquant (doit renvoyer 400)
+POST {{baseUrl}}/ai/correct
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{}
+
+
+### 5. POST /ai/correct — sans token (doit renvoyer 401)
+POST {{baseUrl}}/ai/correct
+Content-Type: application/json
+
+{
+  "text": "Texte sans authentification"
+}
+
+### 5.2 POST /ai/correct — sans token (doit renvoyer 401)
+POST {{baseUrl}}/ai/correct
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "text": "Texte sans authentification je ene sais pas"
+}
+
+
+### 6. POST /ai/agent — compagnon de méditation biblique (cas nominal)
+POST {{baseUrl}}/ai/agent
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "content": "Aujourd'hui j'ai médité sur Philippiens 4:6-7, à propos de ne s'inquiéter de rien mais de tout présenter à Dieu par la prière.",
+  "question": "Que veut dire concrètement 'ne vous inquiétez de rien' dans ce passage ?"
+}
+
+
+### 7. POST /ai/agent — champ "question" manquant (doit renvoyer 400)
+POST {{baseUrl}}/ai/agent
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "content": "test"
+}
+
+
+### 8. POST /ai/agent — sans token (doit renvoyer 401)
+POST {{baseUrl}}/ai/agent
+Content-Type: application/json
+
+{
+  "question": "Test sans authentification"
+}

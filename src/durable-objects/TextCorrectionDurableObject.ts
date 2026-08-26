@@ -30,7 +30,7 @@ export class TextCorrectionDurableObject extends DurableObject {
         );
       }
 
-      const result = await this.env.AI.run("@cf/google/gemma-4-26b-a4b-it" as keyof AiModels, {
+      const result = await this.env.AI.run("@cf/meta/llama-3.2-1b-instruct" as keyof AiModels, {
         messages: [
           {
             role: "system",

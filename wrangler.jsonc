@@ -5,6 +5,7 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "nuvelserver",
+	"account_id": "3dfb67cc0cfcb086d3c2a4b3e90706d6",
 	"main": "src/index.ts",
 	"compatibility_date": "2025-09-19",
 	"observability": {
