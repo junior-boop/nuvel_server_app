@@ -76,7 +76,7 @@ notes.post("/:id", async ({ json, req, env }) => {
   const Notes = NotesUser(env);
   const Synced = SyncTable(env);
   const { id } = req.param();
-  const data = (await req.json()) as NotesType & { _updatedAt?: string };
+  const { _updatedAt, ...data } = (await req.json()) as NotesType & { _updatedAt?: string };
 
   const check = await Notes.findOne({
     where: {
@@ -85,7 +85,7 @@ notes.post("/:id", async ({ json, req, env }) => {
   });
 
   if (check) {
-    const clientUpdatedAt = data._updatedAt ?? new Date().toISOString();
+    const clientUpdatedAt = _updatedAt ?? new Date().toISOString();
     const decision = await arbitrateLWW(
       env,
       "notes",

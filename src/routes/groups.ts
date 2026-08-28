@@ -51,8 +51,7 @@ groups.get("/:userid", async ({ json, req, env }) => {
 groups.post("/:id", async ({ json, req, env }) => {
   const Groups = GroupsTable(env);
   const Synced = SyncTable(env);
-  const { id } = req.param();
-  const data = (await req.json()) as GroupesType & { _updatedAt?: string };
+  const { _updatedAt, ...data } = (await req.json()) as GroupesType & { _updatedAt?: string };
 
 
   const check = await Groups.findOne({
@@ -62,7 +61,7 @@ groups.post("/:id", async ({ json, req, env }) => {
   });
 
   if (check) {
-    const clientUpdatedAt = data._updatedAt ?? new Date().toISOString();
+    const clientUpdatedAt = _updatedAt ?? new Date().toISOString();
     const decision = await arbitrateLWW(
       env,
       "groupes",
@@ -86,7 +85,6 @@ groups.post("/:id", async ({ json, req, env }) => {
       },
       {
         ...data,
-        userid: id,
         lastSyncUpdate: new Date().toISOString(),
         version: check.version + 1,
       }
