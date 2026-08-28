@@ -1,7 +1,37 @@
 import { Hono } from "hono";
+import { v4 as uuidv4 } from "uuid";
 import { authMiddleware } from "../middleware/authMiddleware";
+import { ErrorLogsTable } from "../../utils/tables";
 
 const ai = new Hono<{ Bindings: CloudflareBindings }>();
+
+// Journalise directement en base (table error_logs) les erreurs survenant
+// côté serveur sur les routes IA, indépendamment de tout signalement client.
+const logServerError = async (
+  env: CloudflareBindings,
+  message: string,
+  context: { screen: string; userId?: string | null; extra?: unknown }
+) => {
+  try {
+    const ErrorLogs = ErrorLogsTable(env);
+    await ErrorLogs.create({
+      id: uuidv4(),
+      message: message.slice(0, 2000),
+      stack: null,
+      level: "error",
+      source: "server",
+      platform: "unknown",
+      appVersion: null,
+      environment: "production",
+      userId: context.userId ?? null,
+      screen: context.screen,
+      extra: context.extra ? JSON.stringify(context.extra).slice(0, 4000) : null,
+      resolved: 0,
+    });
+  } catch (loggingError) {
+    console.error("[AI] Échec de journalisation d'erreur:", loggingError);
+  }
+};
 
 // POST /ai/correct - corrige le texte de l'utilisateur (orthographe/grammaire)
 // via le Durable Object dédié, qui appelle Workers AI en arrière-plan.
@@ -24,13 +54,19 @@ ai.post("/correct", authMiddleware, async ({ req, env, json, status, get }) => {
     body: JSON.stringify({ text }),
   });
 
-  const data = await response.json<{ success: boolean }>();
-  if (!data.success) status(500);
+  const data = await response.json<{ success: boolean; error?: string }>();
+  if (!data.success) {
+    status(500);
+    await logServerError(env, data.error || "Échec de correction (DO)", {
+      screen: "ai/correct",
+      userId: user.userId,
+    });
+  }
   return json(data);
 });
 
 // POST /ai/agent - compagnon de méditation biblique pour la page ai-agent (auteurs)
-ai.post("/agent", authMiddleware, async ({ req, env, json, status }) => {
+ai.post("/agent", authMiddleware, async ({ req, env, json, status, get }) => {
   const body = await req.json<{ content?: string; question?: string }>();
   const question = body?.question;
   const context = { content: body?.content ?? "" };
@@ -72,7 +108,7 @@ Si le contexte original est vide, ou ne contient que des versets bibliques sans 
 En revanche, si le lecteur pose une question précise sur un verset (sens d'un mot, contexte historique, lien avec un autre passage), y répondre normalement même sans méditation préalable.`;
 
   try {
-    const result = await env.AI.run("google/gemini-3.1-flash-lite" as keyof AiModels, {
+    const result = await env.AI.run("@cf/google/gemma-4-26b-a4b-it" as keyof AiModels, {
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: question },
@@ -85,6 +121,8 @@ En revanche, si le lecteur pose une question précise sur un verset (sens d'un m
   } catch (err) {
     console.error("[AI Agent] Erreur:", err);
     status(500);
+    const user = get("user");
+    await logServerError(env, String(err), { screen: "ai/agent", userId: user?.userId ?? null });
     return json({ success: false, error: String(err) });
   }
 });

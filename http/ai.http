@@ -2,7 +2,7 @@
 ### Nécessite l'extension VSCode "REST Client" (humao.rest-client)
 ### Lancer le serveur en local avant de tester : npm run dev  (wrangler dev sur 127.0.0.1:8787)
 
-@baseUrl = http://127.0.0.1:8787
+@baseUrl = https://nuvelserver.godigital.workers.dev
 
 ### 1. Login — crée l'utilisateur de test s'il n'existe pas encore, renvoie un accessToken
 # @name login
