@@ -4,13 +4,20 @@ import type { SyncableTable } from "../../utils/syncState";
 /**
  * Endpoints Phase 2 — index de version `sync_state` (pull delta).
  *
- *  GET /sync-state?since=<v>&table=<name?>&limit=<n?>
- *    Renvoie les lignes sync_state dont version > since.
+ *  GET /sync-state?since=<v>&table=<name?>&userid=<id>&limit=<n?>
+ *    Renvoie les lignes sync_state dont version > since, appartenant a userid.
  *    Le client utilise ça pour savoir QUOI tirer.
  *
- *  GET /sync-state/full?table=<name>&since=<v>&limit=<n?>
- *    Renvoie sync_state JOIN table metier => objets canoniques + version.
+ *  GET /sync-state/full?table=<name>&since=<v>&userid=<id>&limit=<n?>
+ *    Renvoie sync_state JOIN table metier => objets canoniques + version, filtre par userid.
  *    Le client utilise ça pour tirer directement les payloads.
+ *
+ * `userid` est obligatoire : sans lui, ces endpoints renvoyaient les lignes de
+ * TOUS les utilisateurs melangees (bug), ce qui faisait que le pull client
+ * recreait localement des groupes/notes d'autres comptes et faisait avancer
+ * le curseur de version au-dela des propres elements de l'utilisateur.
+ * On filtre sur `updatedBy`, qui est toujours l'auteur/proprietaire pour les
+ * tables notes/groupes (voir routes/notes.ts et routes/groups.ts).
  */
 
 const syncState = new Hono<{ Bindings: CloudflareBindings }>();
@@ -32,10 +39,14 @@ syncState.get("/", async (c) => {
 
   const since = Number(c.req.query("since") ?? 0);
   const table = c.req.query("table") as SyncableTable | undefined;
+  const userid = c.req.query("userid");
   const limit = Math.min(Number(c.req.query("limit") ?? 500), 1000);
 
   if (table && !ALLOWED_TABLES.includes(table)) {
     return c.json({ error: `table inconnue: ${table}` }, 400);
+  }
+  if (!userid) {
+    return c.json({ error: "userid requis" }, 400);
   }
 
   try {
@@ -43,17 +54,17 @@ syncState.get("/", async (c) => {
       ? D1.prepare(
           `SELECT table_name, element_id, version, updatedAt, updatedBy, deleted
            FROM sync_state
-           WHERE version > ? AND table_name = ?
+           WHERE version > ? AND table_name = ? AND updatedBy = ?
            ORDER BY version ASC
            LIMIT ?`
-        ).bind(since, table, limit)
+        ).bind(since, table, userid, limit)
       : D1.prepare(
           `SELECT table_name, element_id, version, updatedAt, updatedBy, deleted
            FROM sync_state
-           WHERE version > ?
+           WHERE version > ? AND updatedBy = ?
            ORDER BY version ASC
            LIMIT ?`
-        ).bind(since, limit);
+        ).bind(since, userid, limit);
 
     const { results } = await stmt.all();
     const maxVersion = results.reduce(
@@ -79,10 +90,14 @@ syncState.get("/full", async (c) => {
 
   const table = c.req.query("table") as SyncableTable | undefined;
   const since = Number(c.req.query("since") ?? 0);
+  const userid = c.req.query("userid");
   const limit = Math.min(Number(c.req.query("limit") ?? 200), 500);
 
   if (!table || !ALLOWED_TABLES.includes(table)) {
     return c.json({ error: `table requise parmi ${ALLOWED_TABLES.join(",")}` }, 400);
+  }
+  if (!userid) {
+    return c.json({ error: "userid requis" }, 400);
   }
 
   try {
@@ -91,11 +106,11 @@ syncState.get("/full", async (c) => {
               s.updatedBy, s.deleted, t.*
        FROM sync_state s
        LEFT JOIN ${table} t ON t.id = s.element_id
-       WHERE s.version > ? AND s.table_name = ?
+       WHERE s.version > ? AND s.table_name = ? AND s.updatedBy = ?
        ORDER BY s.version ASC
        LIMIT ?`
     )
-      .bind(since, table, limit)
+      .bind(since, table, userid, limit)
       .all();
 
     const maxVersion = results.reduce(

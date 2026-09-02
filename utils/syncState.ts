@@ -27,6 +27,12 @@ export type SyncableTable =
 /**
  * Upsert sync_state : crée la ligne ou incrémente `version`.
  * À appeler après chaque INSERT ou UPDATE métier réussi.
+ *
+ * `version` est un compteur GLOBAL par table (pas par élément) : chaque écriture
+ * reçoit MAX(version pour cette table) + 1. C'est indispensable pour que le
+ * curseur de pull côté client (`since = MAX(version connue)`) ne saute jamais
+ * un élément jamais vu — avec un compteur par élément, un élément peu modifié
+ * peut rester en-dessous du curseur pour toujours et ne plus jamais être tiré.
  */
 export const bumpVersion = async (
   env: ENV,
@@ -41,14 +47,14 @@ export const bumpVersion = async (
   try {
     await D1.prepare(
       `INSERT INTO sync_state (table_name, element_id, version, updatedAt, updatedBy, deleted)
-       VALUES (?, ?, 1, ?, ?, 0)
+       VALUES (?, ?, (SELECT COALESCE(MAX(version), 0) + 1 FROM sync_state WHERE table_name = ?), ?, ?, 0)
        ON CONFLICT(table_name, element_id) DO UPDATE SET
-         version = version + 1,
+         version = (SELECT COALESCE(MAX(version), 0) + 1 FROM sync_state WHERE table_name = excluded.table_name),
          updatedAt = excluded.updatedAt,
          updatedBy = excluded.updatedBy,
          deleted = 0`
     )
-      .bind(table, elementId, updatedAt, updatedBy)
+      .bind(table, elementId, table, updatedAt, updatedBy)
       .run();
 
     const row = await D1.prepare(
@@ -67,6 +73,7 @@ export const bumpVersion = async (
 /**
  * Marque une entité comme supprimée et incrémente la version.
  * Ne supprime PAS la ligne sync_state (tombstone nécessaire au pull).
+ * Meme schema de version globale par table que `bumpVersion` (voir plus haut).
  */
 export const markDeleted = async (
   env: ENV,
@@ -81,14 +88,14 @@ export const markDeleted = async (
   try {
     await D1.prepare(
       `INSERT INTO sync_state (table_name, element_id, version, updatedAt, updatedBy, deleted)
-       VALUES (?, ?, 1, ?, ?, 1)
+       VALUES (?, ?, (SELECT COALESCE(MAX(version), 0) + 1 FROM sync_state WHERE table_name = ?), ?, ?, 1)
        ON CONFLICT(table_name, element_id) DO UPDATE SET
-         version = version + 1,
+         version = (SELECT COALESCE(MAX(version), 0) + 1 FROM sync_state WHERE table_name = excluded.table_name),
          updatedAt = excluded.updatedAt,
          updatedBy = excluded.updatedBy,
          deleted = 1`
     )
-      .bind(table, elementId, updatedAt, updatedBy)
+      .bind(table, elementId, table, updatedAt, updatedBy)
       .run();
 
     const row = await D1.prepare(
