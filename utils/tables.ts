@@ -36,9 +36,20 @@ export const UsersAccount = (env: ENV) => {
     created: "DATETIME DEFAULT CURRENT_TIMESTAMP",
     modified: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
     country: "TEXT NULL",
+    language: "TEXT NULL",
   });
 
-  (async () => await users.createTable())();
+  (async () => {
+    await users.createTable();
+    // Migration : la colonne language n'existe pas sur les tables déjà créées avant son ajout.
+    const D1 = (env as any).DB as D1Database | undefined;
+    if (!D1) return;
+    try {
+      await D1.exec("ALTER TABLE users ADD COLUMN language TEXT NULL");
+    } catch (e) {
+      // colonne déjà présente, ignore
+    }
+  })();
   return users;
 };
 

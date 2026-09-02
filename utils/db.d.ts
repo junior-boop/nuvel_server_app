@@ -37,6 +37,7 @@ export type User = {
   modified: string;
   lastlogin: string;
   lastlogout: string;
+  language: string | null;
 
 };
 
