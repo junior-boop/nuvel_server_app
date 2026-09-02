@@ -3,7 +3,7 @@ import { Notes as NotesUser, SyncEventsTable as SyncTable } from "../../utils/ta
 import { v4 as uuidv4 } from "uuid";
 import { Notes as NotesType } from "../../utils/db";
 import { IncludeOptions } from "../../utils/simpleorm";
-import { bumpVersion, arbitrateLWW } from "../../utils/syncState";
+import { bumpVersion, arbitrateLWW, markDeleted } from "../../utils/syncState";
 
 const notes = new Hono<{ Bindings: CloudflareBindings }>();
 
@@ -159,6 +159,22 @@ notes.post("/:id", async ({ json, req, env }) => {
     result,
     syncVersion: newVersion,
   });
+});
+
+notes.delete("/:id", async ({ json, req, env }) => {
+  const Notes = NotesUser(env);
+  const { id } = req.param();
+
+  const existing = await Notes.findOne({ where: { id } });
+  if (!existing) {
+    // Deja absente cote serveur : suppression idempotente.
+    return json({ success: true, alreadyDeleted: true });
+  }
+
+  await Notes.delete(id);
+  const syncVersion = await markDeleted(env, "notes", id, existing.creator);
+
+  return json({ success: true, syncVersion });
 });
 
 export default notes;

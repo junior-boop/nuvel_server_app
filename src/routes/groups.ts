@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { GroupsTable, SyncEventsTable as SyncTable } from "../../utils/tables";
 import { v4 as uuidv4 } from "uuid";
 import { Notes as NotesType, Groups as GroupesType } from "../../utils/db";
-import { bumpVersion, arbitrateLWW } from "../../utils/syncState";
+import { bumpVersion, arbitrateLWW, markDeleted } from "../../utils/syncState";
 
 const groups = new Hono<{ Bindings: CloudflareBindings }>();
 
@@ -128,6 +128,22 @@ groups.post("/:id", async ({ json, req, env }) => {
     sucess: true,
     syncVersion: newVersion,
   });
+});
+
+groups.delete("/:id", async ({ json, req, env }) => {
+  const Groups = GroupsTable(env);
+  const { id } = req.param();
+
+  const existing = await Groups.findOne({ where: { id } });
+  if (!existing) {
+    // Deja absent cote serveur : suppression idempotente.
+    return json({ success: true, alreadyDeleted: true });
+  }
+
+  await Groups.delete(id);
+  const syncVersion = await markDeleted(env, "groupes", id, existing.userid);
+
+  return json({ success: true, syncVersion });
 });
 
 export default groups;
