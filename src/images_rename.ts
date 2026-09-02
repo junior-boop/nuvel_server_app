@@ -50,14 +50,31 @@ export default function Metadata_images(image: File) {
   object.originalname = image.name;
 
   let imagetitre = `IMG${MinutesTime()}-${DateForme()}`;
-  switch (image.type) {
-    case "image/jpeg":
-      object.name = imagetitre + ".jpg";
-      return object;
-    case "image/png":
-      object.name = imagetitre + ".png";
-      return object;
+
+  const mimeToExt: Record<string, string> = {
+    "image/jpeg": "jpg",
+    "image/jpg": "jpg",
+    "image/png": "png",
+    "image/gif": "gif",
+    "image/webp": "webp",
+    "image/heic": "heic",
+    "image/heif": "heif",
+    "image/bmp": "bmp",
+    "image/svg+xml": "svg",
+  };
+
+  let extension = mimeToExt[image.type];
+
+  if (!extension && object.originalname?.includes(".")) {
+    extension = object.originalname.split(".").at(-1) as string;
   }
+
+  if (!extension) {
+    extension = "jpg";
+  }
+
+  object.name = `${imagetitre}.${extension}`;
+  return object;
 }
 
 export function Metadata_files(image: File) {
