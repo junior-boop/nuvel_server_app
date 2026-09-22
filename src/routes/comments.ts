@@ -2,9 +2,19 @@ import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { Comments as CommentsTable } from "../../utils/tables";
 import { v4 as uuidv4 } from "uuid";
-import { Comments as CommentsType } from "../../utils/db";
+import { Comments as CommentsType, User as UsersType } from "../../utils/db";
+import { IncludeOptions } from "../../utils/simpleorm";
 import { authMiddleware } from "../middleware/authMiddleware";
 import { requireAdmin } from "../middleware/roleMiddleware";
+
+const CREATOR_INCLUDE = {
+  model: "users",
+  as: "creator",
+  foreignKey: "creator",
+  localKey: "id",
+  type: "belongsTo",
+  select: ["id", "name", "first_name", "photo"],
+} as IncludeOptions<UsersType>;
 
 const comments = new Hono<{ Bindings: CloudflareBindings }>();
 
@@ -150,7 +160,8 @@ comments.get("/:articleId", async ({ json, env, req }) => {
 
   try {
     const allComments = await CommentsModel.findAll({
-      where: { articleId }
+      where: { articleId },
+      include: CREATOR_INCLUDE,
     });
 
     // Filtrer les commentaires avec 5+ signalements

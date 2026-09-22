@@ -7,13 +7,11 @@ import { DurableObject } from "cloudflare:workers";
  * par le consumer de la Queue.
  */
 export class NotificationsDurableObject extends DurableObject {
-  private sessions: Set<WebSocket>;
   private userId: string;
   protected env: CloudflareBindings;
 
   constructor(state: DurableObjectState, env: CloudflareBindings) {
     super(state, env);
-    this.sessions = new Set();
     this.userId = '';
     this.env = env;
   }
@@ -35,21 +33,12 @@ export class NotificationsDurableObject extends DurableObject {
     const [client, server] = Object.values(pair);
 
     this.ctx.acceptWebSocket(server);
-    this.sessions.add(server);
 
     server.send(JSON.stringify({
       type: 'connected',
       userId: this.userId,
       timestamp: Date.now(),
     }));
-
-    server.addEventListener('close', () => {
-      this.sessions.delete(server);
-    });
-
-    server.addEventListener('error', () => {
-      this.sessions.delete(server);
-    });
 
     return new Response(null, {
       status: 101,
@@ -82,17 +71,34 @@ export class NotificationsDurableObject extends DurableObject {
     }
   }
 
+  // ctx.getWebSockets() est la seule liste fiable : les sockets acceptées via
+  // ctx.acceptWebSocket() survivent à l'hibernation du Durable Object, alors qu'un Set
+  // en mémoire est vidé à chaque réveil — le broadcast n'atteignait alors plus personne.
   broadcast(message: string) {
-    this.sessions.forEach((session) => {
+    for (const session of this.ctx.getWebSockets()) {
       try {
         session.send(message);
       } catch (err) {
-        this.sessions.delete(session);
+        console.error('[NotificationsDO] Error sending to session:', err);
       }
-    });
+    }
   }
 
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer) {
     // Les clients n'ont pas besoin d'envoyer de messages pour l'instant.
+  }
+
+  // Avec l'API Hibernation, addEventListener('close'/'error') ne se déclenche jamais :
+  // ce sont ces handlers que le runtime appelle.
+  async webSocketClose(ws: WebSocket, code: number, reason: string, wasClean: boolean) {
+    try {
+      ws.close(code, reason);
+    } catch (err) {
+      // socket déjà fermée
+    }
+  }
+
+  async webSocketError(ws: WebSocket, error: unknown) {
+    console.error('[NotificationsDO] WebSocket error:', error);
   }
 }

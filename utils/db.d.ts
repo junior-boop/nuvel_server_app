@@ -238,6 +238,38 @@ export interface HistoryType {
   lastReading: string;
 }
 
+export interface ArticleStatsType {
+  id: string;
+  articleId: string;
+  viewCount: number;
+  shareCount: number;
+  signals: string; // JSON array of userids who reported the article
+  updatedAt: string;
+  created: string;
+}
+
+export interface NotificationType {
+  id: string;
+  // Un id utilisateur, ou BROADCAST_RECIPIENT ("*") pour une annonce destinée à tous.
+  recipientUserId: string;
+  type: string;
+  title: string;
+  body: string;
+  data: string; // JSON stringifié { articleId, commentId }
+  read: 0 | 1; // hérité : seules les lignes créées avant notification_reads l'utilisent
+  actorUserId: string | null;
+  articleId: string | null;
+  commentId: string | null;
+  createdAt: string;
+}
+
+export interface NotificationReadType {
+  id: string; // `${notificationId}:${userId}` — rend l'insertion idempotente
+  notificationId: string;
+  userId: string;
+  readAt: string;
+}
+
 export interface PushToken {
   id: string;
   userid: string;
@@ -262,4 +294,32 @@ export interface ErrorLog {
   extra: string | null; // JSON stringifié
   resolved: 0 | 1;
   created: string;
+}
+
+export interface BibleVersionRow {
+  key: string; // clé R2 (bibles/xxx.json), identifiant primaire
+  name: string;
+  shortname: string; // abbreviation
+  module: string | null;
+  year: string | null;
+  publisher: string | null;
+  owner: string | null;
+  description: string | null;
+  lang: string | null;
+  lang_short: string | null;
+  copyright: number;
+  copyright_statement: string | null;
+  url: string | null;
+  citation_limit: number;
+  restrict: number;
+  italics: number;
+  strongs: number;
+  red_letter: number;
+  paragraph: number;
+  official: number;
+  research: number;
+  module_version: string | null;
+  size: number;
+  verset: number;
+  uploaded: string;
 }

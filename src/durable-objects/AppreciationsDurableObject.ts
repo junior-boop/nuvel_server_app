@@ -5,22 +5,24 @@ import { DurableObject } from "cloudflare:workers";
  * Un Durable Object par article
  */
 export class AppreciationsDurableObject extends DurableObject {
-  private sessions: Set<WebSocket>;
   private articleId: string;
   protected env: CloudflareBindings;
 
   constructor(state: DurableObjectState, env: CloudflareBindings) {
     super(state, env);
-    this.sessions = new Set();
     this.articleId = '';
     this.env = env;
   }
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
-    
-    // Récupérer l'articleId depuis l'URL
-    this.articleId = url.searchParams.get('articleId') || '';
+
+    // Seul le handshake WebSocket porte l'articleId : "/notify" ne le passe pas,
+    // donc écraser le champ à chaque fetch le remettrait à vide.
+    const articleIdParam = url.searchParams.get('articleId');
+    if (articleIdParam) {
+      this.articleId = articleIdParam;
+    }
 
     // Vérifier si c'est une requête de notification interne
     if (url.pathname === '/notify') {
@@ -38,21 +40,13 @@ export class AppreciationsDurableObject extends DurableObject {
 
     // Accepter la connexion
     this.ctx.acceptWebSocket(server);
-    this.sessions.add(server);
+
+    // L'instance peut être évincée pendant que la socket reste ouverte : l'articleId
+    // est rattaché à la socket pour être récupérable au réveil.
+    server.serializeAttachment({ articleId: this.articleId });
 
     // Envoyer l'état initial
     await this.sendInitialState(server);
-
-    // Cleanup à la déconnexion
-    server.addEventListener('close', () => {
-      this.sessions.delete(server);
-      console.log(`[AppreciationsDO] Client disconnected. Active sessions: ${this.sessions.size}`);
-    });
-
-    server.addEventListener('error', (err) => {
-      console.error('[AppreciationsDO] WebSocket error:', err);
-      this.sessions.delete(server);
-    });
 
     return new Response(null, {
       status: 101,
@@ -78,7 +72,7 @@ export class AppreciationsDurableObject extends DurableObject {
       };
 
       ws.send(JSON.stringify(message));
-      console.log(`[AppreciationsDO] Client connected to article ${this.articleId}. Active sessions: ${this.sessions.size}`);
+      console.log(`[AppreciationsDO] Client connected to article ${this.articleId}. Active sessions: ${this.ctx.getWebSockets().length}`);
     } catch (err) {
       console.error('[AppreciationsDO] Error sending initial state:', err);
     }
@@ -129,12 +123,12 @@ export class AppreciationsDurableObject extends DurableObject {
       userid: userid,
       count: count,
       appreciations: appreciations,
-      articleId: this.articleId,
+      articleId: this.resolveArticleId(),
       timestamp: Date.now()
     };
 
     this.broadcast(JSON.stringify(message));
-    console.log(`[AppreciationsDO] Broadcasted like_added to ${this.sessions.size} sessions`);
+    console.log(`[AppreciationsDO] Broadcasted like_added to ${this.ctx.getWebSockets().length} sessions`);
   }
 
   /**
@@ -149,12 +143,12 @@ export class AppreciationsDurableObject extends DurableObject {
       userid: userid,
       count: count,
       appreciations: appreciations,
-      articleId: this.articleId,
+      articleId: this.resolveArticleId(),
       timestamp: Date.now()
     };
 
     this.broadcast(JSON.stringify(message));
-    console.log(`[AppreciationsDO] Broadcasted like_removed to ${this.sessions.size} sessions`);
+    console.log(`[AppreciationsDO] Broadcasted like_removed to ${this.ctx.getWebSockets().length} sessions`);
   }
 
   /**
@@ -171,16 +165,34 @@ export class AppreciationsDurableObject extends DurableObject {
   /**
    * Broadcaster un message à toutes les sessions connectées
    */
+  // ctx.getWebSockets() est la seule liste fiable : les sockets acceptées via
+  // ctx.acceptWebSocket() survivent à l'hibernation du Durable Object, alors qu'un Set
+  // en mémoire est vidé à chaque réveil — le broadcast n'atteignait alors plus personne.
   broadcast(message: string) {
-    this.sessions.forEach((session) => {
+    for (const session of this.ctx.getWebSockets()) {
       try {
         session.send(message);
       } catch (err) {
         console.error('[AppreciationsDO] Error broadcasting to session:', err);
-        // Supprimer la session si l'envoi échoue
-        this.sessions.delete(session);
       }
-    });
+    }
+  }
+
+  /**
+   * Récupérer l'articleId, y compris après un réveil où le champ d'instance est vide
+   * (un /notify ne porte pas le query param) : les sockets encore ouvertes le conservent.
+   */
+  private resolveArticleId(): string {
+    if (!this.articleId) {
+      for (const session of this.ctx.getWebSockets()) {
+        const attachment = session.deserializeAttachment() as { articleId?: string } | null;
+        if (attachment?.articleId) {
+          this.articleId = attachment.articleId;
+          break;
+        }
+      }
+    }
+    return this.articleId;
   }
 
   /**
@@ -188,13 +200,14 @@ export class AppreciationsDurableObject extends DurableObject {
    */
   async getAppreciationsCount(): Promise<number> {
     try {
-      if (!this.articleId || !this.env.DB) {
+      const articleId = this.resolveArticleId();
+      if (!articleId || !this.env.DB) {
         return 0;
       }
 
       const result = await this.env.DB.prepare(
         'SELECT COUNT(*) as count FROM appreciations WHERE articleId = ?'
-      ).bind(this.articleId).first<{ count: number }>();
+      ).bind(articleId).first<{ count: number }>();
 
       return result?.count || 0;
     } catch (err) {
@@ -208,13 +221,14 @@ export class AppreciationsDurableObject extends DurableObject {
    */
   async getAppreciations(): Promise<any[]> {
     try {
-      if (!this.articleId || !this.env.DB) {
+      const articleId = this.resolveArticleId();
+      if (!articleId || !this.env.DB) {
         return [];
       }
 
       const result = await this.env.DB.prepare(
         'SELECT * FROM appreciations WHERE articleId = ?'
-      ).bind(this.articleId).all();
+      ).bind(articleId).all();
 
       return result.results || [];
     } catch (err) {
@@ -252,7 +266,7 @@ export class AppreciationsDurableObject extends DurableObject {
       type: 'update',
       count: count,
       appreciations: appreciations,
-      articleId: this.articleId,
+      articleId: this.resolveArticleId(),
       timestamp: Date.now()
     };
 
@@ -261,5 +275,19 @@ export class AppreciationsDurableObject extends DurableObject {
     } catch (err) {
       console.error('[AppreciationsDO] Error sending update:', err);
     }
+  }
+
+  // Avec l'API Hibernation, addEventListener('close'/'error') ne se déclenche jamais :
+  // ce sont ces handlers que le runtime appelle.
+  async webSocketClose(ws: WebSocket, code: number, reason: string, wasClean: boolean) {
+    try {
+      ws.close(code, reason);
+    } catch (err) {
+      // socket déjà fermée
+    }
+  }
+
+  async webSocketError(ws: WebSocket, error: unknown) {
+    console.error('[AppreciationsDO] WebSocket error:', error);
   }
 }

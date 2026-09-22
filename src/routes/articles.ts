@@ -1,18 +1,15 @@
 import { Hono } from "hono";
-import { HistoryTable, Publish } from "../../utils/tables";
+import { HistoryTable, Publish, ArticleStatsTable, Comments, Appreciations } from "../../utils/tables";
 import { v4 as uuidv4 } from "uuid";
 import { ArticlesType, User as UsersType } from "../../utils/db";
 import { IncludeOptions } from "../../utils/simpleorm";
 import { authMiddleware, optionalAuth } from "../middleware/authMiddleware";
-import { getDB, id } from "../../utils/instant";
 import { bumpVersion, arbitrateLWW, markDeleted } from "../../utils/syncState";
 
 const article = new Hono<{ Bindings: CloudflareBindings }>();
 
 article.get("/", async ({ json, env, res }) => {
   const Articles = Publish(env);
-
-  const db = getDB(env)
 
   return json(
     await Articles.findAll({
@@ -30,72 +27,25 @@ article.get("/", async ({ json, env, res }) => {
   );
 });
 
-article.get('/check', async ({ json, env, res }) => {
-  const db = getDB(env)
-  const Articles = Publish(env);
-
-  const createdArticleStats = async (articleId: string) => {
-    try {
-      const articleStats = await db.transact(db.tx.articlesStats[id()].create({
-        articleId: articleId,
-        commentCount: 0,
-        likeCount: 0,
-        viewCount: 0,
-        lastCommentAt: new Date(),
-        updatedAt: new Date(),
-        shareCount: 0,
-        signals: [],
-      }))
-
-      return articleStats.clientId
-    } catch (error) {
-      console.log(error)
-    }
-  }
-
-  for (let i = 0; i < (await Articles.findAll()).length; i++) {
-    const artId = (await Articles.findAll())[i].id
-    const article = await Articles.findById(artId as string)
-    const check = await db.query({
-      articlesStats: {
-        $: {
-          where: {
-            articleId: article?.id as string
-          }
-        }
-      }
-    })
-
-    if (check.articlesStats?.length === 0) {
-      await createdArticleStats(article?.id as string)
-    }
-  }
-
-  return json({
-    message: "done"
-  })
-})
-
 article.get("/stats", async ({ json, env, res }) => {
-  const db = getDB(env)
+  const ArticleStats = ArticleStatsTable(env);
+  const Articles = Publish(env);
+  const CommentsModel = Comments(env);
+  const AppreciationsModel = Appreciations(env);
 
-  const stats = await db.query({
-    articlesStats: {
-      $: {
-        limit: 7,
-        // Similar to limit, order is limited to top-level namespaces right now
-      },
-    },
-  })
+  const stats = await ArticleStats.findAll({
+    orderBy: { column: "viewCount", direction: "DESC" },
+    limit: 7,
+  });
 
-  const sortedArticles = stats.articlesStats
-    .sort((a, b) => b.viewCount - a.viewCount);
+  const topArticles = await Promise.all(stats.map(async (stat) => {
+    const [commentCount, likeCount] = await Promise.all([
+      CommentsModel.where({ articleId: stat.articleId }).count(),
+      AppreciationsModel.where({ articleId: stat.articleId }).count(),
+    ]);
 
-
-  const topArticles = await Promise.all(sortedArticles.map(async articles => {
-    const Articles = Publish(env)
     try {
-      const article = await Articles.findById(articles.articleId, {
+      const article = await Articles.findById(stat.articleId, {
         include: {
           model: "users",
           as: "user",
@@ -110,14 +60,20 @@ article.get("/stats", async ({ json, env, res }) => {
         ? (() => { const { body, appreciation, ...rest } = article as any; return rest; })()
         : null;
       return {
-        ...articles,
-        article: lightArticle
+        ...stat,
+        signals: JSON.parse(stat.signals || "[]"),
+        commentCount,
+        likeCount,
+        article: lightArticle,
       }
     } catch (error) {
       console.log('[Articles] Error:', error);
       return {
-        ...articles,
-        article: null
+        ...stat,
+        signals: JSON.parse(stat.signals || "[]"),
+        commentCount,
+        likeCount,
+        article: null,
       }
     }
   }))
@@ -126,6 +82,105 @@ article.get("/stats", async ({ json, env, res }) => {
     stats: topArticles
   })
 })
+
+// Crée (si besoin) la ligne de stats D1 pour un article — idempotent
+article.post("/:articleid/stats", async ({ json, env, req }) => {
+  const { articleid } = req.param();
+  const ArticleStats = ArticleStatsTable(env);
+
+  const { record } = await ArticleStats.findOrCreate(
+    { articleId: articleid },
+    {
+      id: uuidv4(),
+      articleId: articleid,
+      viewCount: 0,
+      shareCount: 0,
+      signals: "[]",
+      updatedAt: new Date().toISOString(),
+    }
+  );
+
+  return json({ ...record, signals: JSON.parse(record.signals || "[]") });
+});
+
+article.post("/:articleid/view", async ({ json, env, req }) => {
+  const { articleid } = req.param();
+  const ArticleStats = ArticleStatsTable(env);
+
+  const { record } = await ArticleStats.findOrCreate(
+    { articleId: articleid },
+    {
+      id: uuidv4(),
+      articleId: articleid,
+      viewCount: 0,
+      shareCount: 0,
+      signals: "[]",
+      updatedAt: new Date().toISOString(),
+    }
+  );
+
+  const updated = await ArticleStats.increment(record.id, "viewCount", 1);
+
+  return json({ viewCount: updated?.viewCount ?? record.viewCount + 1 });
+});
+
+article.post("/:articleid/share", async ({ json, env, req }) => {
+  const { articleid } = req.param();
+  const ArticleStats = ArticleStatsTable(env);
+
+  const { record } = await ArticleStats.findOrCreate(
+    { articleId: articleid },
+    {
+      id: uuidv4(),
+      articleId: articleid,
+      viewCount: 0,
+      shareCount: 0,
+      signals: "[]",
+      updatedAt: new Date().toISOString(),
+    }
+  );
+
+  const updated = await ArticleStats.increment(record.id, "shareCount", 1);
+
+  return json({ shareCount: updated?.shareCount ?? record.shareCount + 1 });
+});
+
+article.post("/:articleid/signal", async ({ json, env, req, status }) => {
+  const { articleid } = req.param();
+  const { userId } = await req.json() as { userId: string };
+
+  if (!userId) {
+    status(400);
+    return json({ error: "userId requis" });
+  }
+
+  const ArticleStats = ArticleStatsTable(env);
+
+  const { record } = await ArticleStats.findOrCreate(
+    { articleId: articleid },
+    {
+      id: uuidv4(),
+      articleId: articleid,
+      viewCount: 0,
+      shareCount: 0,
+      signals: "[]",
+      updatedAt: new Date().toISOString(),
+    }
+  );
+
+  const currentSignals: string[] = JSON.parse(record.signals || "[]");
+  const signaled = currentSignals.includes(userId);
+  const nextSignals = signaled
+    ? currentSignals.filter((uid) => uid !== userId)
+    : [...currentSignals, userId];
+
+  const updated = await ArticleStats.update(record.id, {
+    signals: JSON.stringify(nextSignals),
+    updatedAt: new Date().toISOString(),
+  });
+
+  return json({ signals: JSON.parse(updated?.signals || "[]") });
+});
 
 
 // Route accessible même sans authentification

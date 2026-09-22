@@ -5,22 +5,24 @@ import { DurableObject } from "cloudflare:workers";
  * Un Durable Object par article
  */
 export class CommentsDurableObject extends DurableObject {
-  private sessions: Set<WebSocket>;
   private articleId: string;
   protected env: CloudflareBindings;
 
   constructor(state: DurableObjectState, env: CloudflareBindings) {
     super(state, env);
-    this.sessions = new Set();
     this.articleId = '';
     this.env = env;
   }
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
-    
-    // Récupérer l'articleId depuis l'URL
-    this.articleId = url.searchParams.get('articleId') || '';
+
+    // Seul le handshake WebSocket porte l'articleId : "/notify" ne le passe pas,
+    // donc écraser le champ à chaque fetch le remettrait à vide.
+    const articleIdParam = url.searchParams.get('articleId');
+    if (articleIdParam) {
+      this.articleId = articleIdParam;
+    }
 
     // Vérifier si c'est une requête de notification interne
     if (url.pathname === '/notify') {
@@ -38,21 +40,13 @@ export class CommentsDurableObject extends DurableObject {
 
     // Accepter la connexion
     this.ctx.acceptWebSocket(server);
-    this.sessions.add(server);
+
+    // L'instance peut être évincée pendant que la socket reste ouverte : l'articleId
+    // est rattaché à la socket pour être récupérable au réveil.
+    server.serializeAttachment({ articleId: this.articleId });
 
     // Envoyer l'état initial
     await this.sendInitialState(server);
-
-    // Cleanup à la déconnexion
-    server.addEventListener('close', () => {
-      this.sessions.delete(server);
-      console.log(`[CommentsDO] Client disconnected. Active sessions: ${this.sessions.size}`);
-    });
-
-    server.addEventListener('error', (err) => {
-      console.error('[CommentsDO] WebSocket error:', err);
-      this.sessions.delete(server);
-    });
 
     return new Response(null, {
       status: 101,
@@ -76,7 +70,7 @@ export class CommentsDurableObject extends DurableObject {
       };
 
       ws.send(JSON.stringify(message));
-      console.log(`[CommentsDO] Client connected to article ${this.articleId}. Active sessions: ${this.sessions.size}`);
+      console.log(`[CommentsDO] Client connected to article ${this.articleId}. Active sessions: ${this.ctx.getWebSockets().length}`);
     } catch (err) {
       console.error('[CommentsDO] Error sending initial state:', err);
     }
@@ -125,12 +119,12 @@ export class CommentsDurableObject extends DurableObject {
       type: 'comment_added',
       comment: comment,
       count: count,
-      articleId: this.articleId,
+      articleId: this.resolveArticleId(),
       timestamp: Date.now()
     };
 
     this.broadcast(JSON.stringify(message));
-    console.log(`[CommentsDO] Broadcasted comment_added to ${this.sessions.size} sessions`);
+    console.log(`[CommentsDO] Broadcasted comment_added to ${this.ctx.getWebSockets().length} sessions`);
   }
 
   /**
@@ -143,12 +137,12 @@ export class CommentsDurableObject extends DurableObject {
       type: 'comment_deleted',
       commentId: commentId,
       count: count,
-      articleId: this.articleId,
+      articleId: this.resolveArticleId(),
       timestamp: Date.now()
     };
 
     this.broadcast(JSON.stringify(message));
-    console.log(`[CommentsDO] Broadcasted comment_deleted to ${this.sessions.size} sessions`);
+    console.log(`[CommentsDO] Broadcasted comment_deleted to ${this.ctx.getWebSockets().length} sessions`);
   }
 
   /**
@@ -161,27 +155,45 @@ export class CommentsDurableObject extends DurableObject {
       type: 'comment_updated',
       comment: comment,
       count: count,
-      articleId: this.articleId,
+      articleId: this.resolveArticleId(),
       timestamp: Date.now()
     };
 
     this.broadcast(JSON.stringify(message));
-    console.log(`[CommentsDO] Broadcasted comment_updated to ${this.sessions.size} sessions`);
+    console.log(`[CommentsDO] Broadcasted comment_updated to ${this.ctx.getWebSockets().length} sessions`);
   }
 
   /**
    * Broadcaster un message à toutes les sessions connectées
    */
+  // ctx.getWebSockets() est la seule liste fiable : les sockets acceptées via
+  // ctx.acceptWebSocket() survivent à l'hibernation du Durable Object, alors qu'un Set
+  // en mémoire est vidé à chaque réveil — le broadcast n'atteignait alors plus personne.
   broadcast(message: string) {
-    this.sessions.forEach((session) => {
+    for (const session of this.ctx.getWebSockets()) {
       try {
         session.send(message);
       } catch (err) {
         console.error('[CommentsDO] Error broadcasting to session:', err);
-        // Supprimer la session si l'envoi échoue
-        this.sessions.delete(session);
       }
-    });
+    }
+  }
+
+  /**
+   * Récupérer l'articleId, y compris après un réveil où le champ d'instance est vide
+   * (un /notify ne porte pas le query param) : les sockets encore ouvertes le conservent.
+   */
+  private resolveArticleId(): string {
+    if (!this.articleId) {
+      for (const session of this.ctx.getWebSockets()) {
+        const attachment = session.deserializeAttachment() as { articleId?: string } | null;
+        if (attachment?.articleId) {
+          this.articleId = attachment.articleId;
+          break;
+        }
+      }
+    }
+    return this.articleId;
   }
 
   /**
@@ -189,13 +201,14 @@ export class CommentsDurableObject extends DurableObject {
    */
   async getCommentsCount(): Promise<number> {
     try {
-      if (!this.articleId || !this.env.DB) {
+      const articleId = this.resolveArticleId();
+      if (!articleId || !this.env.DB) {
         return 0;
       }
 
       const result = await this.env.DB.prepare(
         'SELECT COUNT(*) as count FROM comments WHERE articleId = ?'
-      ).bind(this.articleId).first<{ count: number }>();
+      ).bind(articleId).first<{ count: number }>();
 
       return result?.count || 0;
     } catch (err) {
@@ -231,7 +244,7 @@ export class CommentsDurableObject extends DurableObject {
     const message = {
       type: 'count_update',
       count: count,
-      articleId: this.articleId,
+      articleId: this.resolveArticleId(),
       timestamp: Date.now()
     };
 
@@ -240,5 +253,19 @@ export class CommentsDurableObject extends DurableObject {
     } catch (err) {
       console.error('[CommentsDO] Error sending count:', err);
     }
+  }
+
+  // Avec l'API Hibernation, addEventListener('close'/'error') ne se déclenche jamais :
+  // ce sont ces handlers que le runtime appelle.
+  async webSocketClose(ws: WebSocket, code: number, reason: string, wasClean: boolean) {
+    try {
+      ws.close(code, reason);
+    } catch (err) {
+      // socket déjà fermée
+    }
+  }
+
+  async webSocketError(ws: WebSocket, error: unknown) {
+    console.error('[CommentsDO] WebSocket error:', error);
   }
 }

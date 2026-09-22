@@ -16,6 +16,10 @@ import {
   SyncStateRow,
   PushToken,
   ErrorLog,
+  BibleVersionRow,
+  ArticleStatsType,
+  NotificationType,
+  NotificationReadType,
 } from "./db";
 
 export type ENV = Partial<CloudflareBindings>;
@@ -307,6 +311,50 @@ export const ErrorLogsTable = (env: ENV) => {
   return errorLogs;
 };
 
+export const BibleVersionsTable = (env: ENV) => {
+  const bibleVersions = db(env).createModel<BibleVersionRow>("bible_versions", {
+    key: "TEXT PRIMARY KEY NOT NULL",
+    name: "TEXT NOT NULL",
+    shortname: "TEXT NOT NULL",
+    module: "TEXT NULL",
+    year: "TEXT NULL",
+    publisher: "TEXT NULL",
+    owner: "TEXT NULL",
+    description: "TEXT NULL",
+    lang: "TEXT NULL",
+    lang_short: "TEXT NULL",
+    // @ts-ignore
+    copyright: "INTEGER NOT NULL DEFAULT 0",
+    copyright_statement: "TEXT NULL",
+    url: "TEXT NULL",
+    // @ts-ignore
+    citation_limit: "INTEGER NOT NULL DEFAULT 0",
+    // @ts-ignore
+    restrict: "INTEGER NOT NULL DEFAULT 0",
+    // @ts-ignore
+    italics: "INTEGER NOT NULL DEFAULT 0",
+    // @ts-ignore
+    strongs: "INTEGER NOT NULL DEFAULT 0",
+    // @ts-ignore
+    red_letter: "INTEGER NOT NULL DEFAULT 0",
+    // @ts-ignore
+    paragraph: "INTEGER NOT NULL DEFAULT 0",
+    // @ts-ignore
+    official: "INTEGER NOT NULL DEFAULT 0",
+    // @ts-ignore
+    research: "INTEGER NOT NULL DEFAULT 0",
+    module_version: "TEXT NULL",
+    // @ts-ignore
+    size: "INTEGER NOT NULL DEFAULT 0",
+    // @ts-ignore
+    verset: "INTEGER NOT NULL DEFAULT 0",
+    uploaded: "TEXT NULL",
+  });
+
+  (async () => await bibleVersions.createTable())();
+  return bibleVersions;
+};
+
 export const HistoryTable = (env: ENV) => {
   const historyTable = db(env).createModel<HistoryType>("history", {
     id: "TEXT PRIMARY KEY NOT NULL",
@@ -320,4 +368,96 @@ export const HistoryTable = (env: ENV) => {
 
   (async () => await historyTable.createTable())();
   return historyTable;
+};
+
+export const ArticleStatsTable = (env: ENV) => {
+  const articleStats = db(env).createModel<ArticleStatsType>("article_stats", {
+    id: "TEXT PRIMARY KEY NOT NULL",
+    articleId: "TEXT NOT NULL UNIQUE",
+    // @ts-ignore
+    viewCount: "INTEGER NOT NULL DEFAULT 0",
+    // @ts-ignore
+    shareCount: "INTEGER NOT NULL DEFAULT 0",
+    // @ts-ignore
+    signals: "TEXT NOT NULL DEFAULT '[]'",
+    updatedAt: "TEXT",
+    created: "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP",
+  });
+
+  (async () => await articleStats.createTable())();
+  return articleStats;
+};
+
+// Valeur sentinelle de recipientUserId désignant « tous les utilisateurs ».
+// Une annonce diffusée occupe ainsi une seule ligne, quel que soit le nombre d'inscrits.
+// On utilise une sentinelle plutôt que NULL car passer la colonne de NOT NULL à NULL
+// imposerait une reconstruction complète de la table en SQLite/D1.
+export const BROADCAST_RECIPIENT = "*";
+
+export const NotificationsTable = (env: ENV) => {
+  const notifications = db(env).createModel<NotificationType>("notifications", {
+    id: "TEXT PRIMARY KEY NOT NULL",
+    recipientUserId: "TEXT NOT NULL",
+    type: "TEXT NOT NULL",
+    title: "TEXT NOT NULL",
+    body: "TEXT NOT NULL",
+    // @ts-ignore
+    data: "TEXT NOT NULL DEFAULT '{}'",
+    // @ts-ignore
+    read: "INTEGER NOT NULL DEFAULT 0",
+    actorUserId: "TEXT NULL",
+    articleId: "TEXT NULL",
+    commentId: "TEXT NULL",
+    createdAt: "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP",
+  });
+
+  (async () => {
+    await notifications.createTable();
+    const D1 = (env as any).DB as D1Database | undefined;
+    if (!D1) return;
+    try {
+      await D1.exec(
+        "CREATE INDEX IF NOT EXISTS idx_notifications_recipient ON notifications (recipientUserId, createdAt)"
+      );
+    } catch (e) {
+      // index déjà présent, ignore
+    }
+  })();
+  return notifications;
+};
+
+let notificationReadsReady: Promise<void> | null = null;
+
+export const NotificationReadsTable = (env: ENV) => {
+  const notificationReads = db(env).createModel<NotificationReadType>("notification_reads", {
+    id: "TEXT PRIMARY KEY NOT NULL",
+    notificationId: "TEXT NOT NULL",
+    userId: "TEXT NOT NULL",
+    readAt: "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP",
+  });
+
+  if (!notificationReadsReady) {
+    notificationReadsReady = (async () => {
+      await notificationReads.createTable();
+      const D1 = (env as any).DB as D1Database | undefined;
+      if (!D1) return;
+      try {
+        await D1.exec(
+          "CREATE INDEX IF NOT EXISTS idx_notification_reads_user ON notification_reads (userId, notificationId)"
+        );
+      } catch (e) {
+        // index déjà présent, ignore
+      }
+    })();
+  }
+
+  return notificationReads;
+};
+
+// Les requêtes SQL brutes qui joignent notification_reads doivent attendre sa création :
+// le CREATE TABLE est mémoïsé par isolate, donc ce await n'ajoute un aller-retour qu'au tout premier appel.
+export const ensureNotificationReadsTable = async (env: ENV) => {
+  const model = NotificationReadsTable(env);
+  await notificationReadsReady;
+  return model;
 };

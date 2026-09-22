@@ -1,8 +1,14 @@
 import { Hono } from "hono";
 import { v4 as uuidv4 } from "uuid";
-import { PushTokensTable, UsersAccount } from "../../utils/tables";
+import {
+  BROADCAST_RECIPIENT,
+  Comments as CommentsTable,
+  ensureNotificationReadsTable,
+  NotificationsTable,
+  PushTokensTable,
+  UsersAccount,
+} from "../../utils/tables";
 import { authMiddleware } from "../middleware/authMiddleware";
-import { getDB } from "../../utils/instant";
 import type { NotificationQueueMessage } from "../queue-consumer";
 
 const notifications = new Hono<{ Bindings: CloudflareBindings }>();
@@ -79,13 +85,7 @@ notifications.post("/comment-reply", authMiddleware, async ({ req, env, json, st
   }
 
   try {
-    const db = getDB(env);
-
-    const { comments } = await db.query({
-      comments: {
-        $: { where: { articleId } },
-      },
-    });
+    const comments = await CommentsTable(env).findAll({ where: { articleId } });
 
     const recipientIds = Array.from(
       new Set(
@@ -104,6 +104,7 @@ notifications.post("/comment-reply", authMiddleware, async ({ req, env, json, st
     const preview = (content || "").toString().slice(0, 120);
 
     const messages: NotificationQueueMessage[] = recipientIds.map((recipientUserId) => ({
+      id: uuidv4(),
       recipientUserId,
       type: "comment_reply",
       title: `${actorName} a commenté ${articleTitle ? `« ${articleTitle} »` : "un article que vous suivez"}`,
@@ -143,14 +144,39 @@ notifications.post("/broadcast", authMiddleware, async ({ req, env, json, status
     return json({ success: false, message: "title et body sont requis" });
   }
 
+  const notificationType = type === "prayer_topic" ? "prayer_topic" : "announcement";
+
   try {
+    // L'annonce est écrite UNE SEULE FOIS, avec recipientUserId = "*".
+    // Les destinataires la lisent via GET /:userId, qui inclut les lignes "*".
+    const notificationId = uuidv4();
+    const createdAt = new Date().toISOString();
+
+    await NotificationsTable(env).create({
+      id: notificationId,
+      recipientUserId: BROADCAST_RECIPIENT,
+      type: notificationType,
+      title,
+      body,
+      data: JSON.stringify({ articleId: null, commentId: null }),
+      read: 0,
+      actorUserId: user.userId,
+      articleId: null,
+      commentId: null,
+      createdAt,
+    });
+
+    // La Queue ne sert plus qu'à la livraison (push OS + WebSocket), pas à la persistance.
     const users = await UsersAccount(env).findAll({ select: ["id"] });
     const messages: NotificationQueueMessage[] = users.map((u: any) => ({
+      id: notificationId,
       recipientUserId: u.id,
-      type: type === "prayer_topic" ? "prayer_topic" : "announcement",
+      type: notificationType,
       title,
       body,
       actorUserId: user.userId,
+      createdAt,
+      persist: false,
     }));
 
     for (let i = 0; i < messages.length; i += 100) {
@@ -159,7 +185,101 @@ notifications.post("/broadcast", authMiddleware, async ({ req, env, json, status
       );
     }
 
-    return json({ success: true, notified: messages.length });
+    return json({ success: true, notificationId, notified: messages.length });
+  } catch (error) {
+    status(500);
+    return json({ success: false, error: String(error) });
+  }
+});
+
+// Lister les notifications d'un utilisateur (plus récentes en premier).
+// Réunit les notifications personnelles et les annonces diffusées ("*"), et calcule
+// l'état "lu" par jointure sur notification_reads (la colonne read reste lue pour
+// les lignes antérieures à cette table).
+notifications.get("/:userId", async ({ req, env, json, status }) => {
+  const { userId } = req.param();
+
+  try {
+    await ensureNotificationReadsTable(env);
+    const Notifications = NotificationsTable(env);
+
+    const rows = await Notifications.orm.query<any>(
+      `SELECT n.id, n.recipientUserId, n.type, n.title, n.body, n.data,
+              n.actorUserId, n.articleId, n.commentId, n.createdAt,
+              CASE WHEN r.id IS NOT NULL OR n."read" = 1 THEN 1 ELSE 0 END AS "read"
+         FROM notifications n
+         LEFT JOIN notification_reads r
+           ON r.notificationId = n.id AND r.userId = ?
+        WHERE n.recipientUserId = ? OR n.recipientUserId = ?
+        ORDER BY n.createdAt DESC`,
+      [userId, userId, BROADCAST_RECIPIENT]
+    );
+
+    const list = (rows || []).map((n: any) => ({
+      ...n,
+      read: !!n.read,
+      data: n.data ? JSON.parse(n.data) : null,
+    }));
+
+    return json({ success: true, notifications: list });
+  } catch (error) {
+    status(500);
+    return json({ success: false, error: String(error) });
+  }
+});
+
+// Marquer une notification comme lue pour un utilisateur donné.
+// L'état de lecture est par utilisateur : une annonce partagée ne peut pas porter
+// un seul drapeau read global.
+notifications.post("/:notificationId/read", async ({ req, env, json, status }) => {
+  const { notificationId } = req.param();
+  // Les builds de l'app antérieurs à ce changement appellent cette route sans corps :
+  // on répond 400 plutôt que de laisser le parse JSON remonter en 500.
+  const payload = await req
+    .json<{ userId?: string }>()
+    .catch((): { userId?: string } => ({}));
+  const userId = payload.userId;
+
+  if (!userId) {
+    status(400);
+    return json({ success: false, message: "userId est requis" });
+  }
+
+  try {
+    const NotificationReads = await ensureNotificationReadsTable(env);
+    await NotificationReads.findOrCreate(
+      { id: `${notificationId}:${userId}` },
+      {
+        id: `${notificationId}:${userId}`,
+        notificationId,
+        userId,
+        readAt: new Date().toISOString(),
+      }
+    );
+    return json({ success: true });
+  } catch (error) {
+    status(500);
+    return json({ success: false, error: String(error) });
+  }
+});
+
+// Marquer toutes les notifications visibles d'un utilisateur comme lues
+notifications.post("/:userId/read-all", async ({ req, env, json, status }) => {
+  const { userId } = req.param();
+
+  try {
+    await ensureNotificationReadsTable(env);
+    const Notifications = NotificationsTable(env);
+
+    await Notifications.orm.query(
+      `INSERT OR IGNORE INTO notification_reads (id, notificationId, userId, readAt)
+       SELECT n.id || ':' || ?, n.id, ?, ?
+         FROM notifications n
+        WHERE n.recipientUserId = ? OR n.recipientUserId = ?`,
+      [userId, userId, new Date().toISOString(), userId, BROADCAST_RECIPIENT]
+    );
+
+    return json({ success: true });
   } catch (error) {
     status(500);
     return json({ success: false, error: String(error) });
