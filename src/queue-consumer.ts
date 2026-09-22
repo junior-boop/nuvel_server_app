@@ -1,3 +1,4 @@
+import { sendExpoPush } from "../utils/expoPush";
 import { NotificationsTable, PushTokensTable } from "../utils/tables";
 
 export interface NotificationQueueMessage {
@@ -10,56 +11,12 @@ export interface NotificationQueueMessage {
   title: string;
   body: string;
   actorUserId?: string;
-  articleId?: string;
+  articleId?: string | null;
   commentId?: string;
   createdAt?: string;
   // false = la ligne D1 existe déjà (annonce diffusée, écrite une seule fois par /broadcast).
   // Le consumer se limite alors à la livraison : persister ici recréerait une ligne par destinataire.
   persist?: boolean;
-}
-
-const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
-
-async function sendExpoPush(tokens: string[], title: string, body: string, data: Record<string, unknown>) {
-  if (tokens.length === 0) return;
-
-  const messages = tokens.map((to) => ({
-    to,
-    sound: "default",
-    title,
-    body,
-    data,
-  }));
-
-  try {
-    const response = await fetch(EXPO_PUSH_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        "Accept-Encoding": "gzip, deflate",
-      },
-      body: JSON.stringify(messages),
-    });
-
-    const result = await response.json<{
-      data?: { status: string; message?: string; details?: { error?: string } }[];
-      errors?: unknown[];
-    }>();
-
-    if (!response.ok) {
-      console.error("[Queue] Expo push request failed:", response.status, result);
-      return;
-    }
-
-    result.data?.forEach((ticket, i) => {
-      if (ticket.status === "error") {
-        console.error("[Queue] Expo push ticket error:", tokens[i], ticket.message, ticket.details);
-      }
-    });
-  } catch (err) {
-    console.error("[Queue] Error sending Expo push:", err);
-  }
 }
 
 export async function queueHandler(batch: MessageBatch<NotificationQueueMessage>, env: CloudflareBindings) {

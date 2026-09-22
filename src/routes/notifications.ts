@@ -137,7 +137,7 @@ notifications.post("/broadcast", authMiddleware, async ({ req, env, json, status
     return json({ success: false, message: "Accès réservé aux administrateurs" });
   }
 
-  const { title, body, type } = await req.json();
+  const { title, body, type, articleId } = await req.json();
 
   if (!title || !body) {
     status(400);
@@ -145,6 +145,7 @@ notifications.post("/broadcast", authMiddleware, async ({ req, env, json, status
   }
 
   const notificationType = type === "prayer_topic" ? "prayer_topic" : "announcement";
+  const linkedArticleId = articleId || null;
 
   try {
     // L'annonce est écrite UNE SEULE FOIS, avec recipientUserId = "*".
@@ -158,10 +159,10 @@ notifications.post("/broadcast", authMiddleware, async ({ req, env, json, status
       type: notificationType,
       title,
       body,
-      data: JSON.stringify({ articleId: null, commentId: null }),
+      data: JSON.stringify({ articleId: linkedArticleId, commentId: null }),
       read: 0,
       actorUserId: user.userId,
-      articleId: null,
+      articleId: linkedArticleId,
       commentId: null,
       createdAt,
     });
@@ -175,6 +176,7 @@ notifications.post("/broadcast", authMiddleware, async ({ req, env, json, status
       title,
       body,
       actorUserId: user.userId,
+      articleId: linkedArticleId,
       createdAt,
       persist: false,
     }));

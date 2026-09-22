@@ -49,6 +49,11 @@
 				"name": "TEXT_CORRECTION_DO",
 				"class_name": "TextCorrectionDurableObject",
 				"script_name": "nuvelserver"
+			},
+			{
+				"name": "HISTORY_DO",
+				"class_name": "HistoryDurableObject",
+				"script_name": "nuvelserver"
 			}
 		]
 	},
@@ -74,6 +79,12 @@
 			"tag": "v3",
 			"new_sqlite_classes": [
 				"TextCorrectionDurableObject"
+			]
+		},
+		{
+			"tag": "v4",
+			"new_sqlite_classes": [
+				"HistoryDurableObject"
 			]
 		}
 	],
@@ -102,6 +113,16 @@
 				"max_batch_timeout": 5,
 				"max_retries": 3
 			}
+		]
+	},
+	/**
+	 * Cron Triggers
+	 * Docs: https://developers.cloudflare.com/workers/configuration/cron-triggers/
+	 * Rappel de notifications toutes les heures (l'expression est en UTC).
+	 */
+	"triggers": {
+		"crons": [
+			"0 * * * *"
 		]
 	},
 	/**

@@ -19,7 +19,9 @@ import notifications from "./routes/notifications";
 import errors from "./routes/errors";
 import admin from "./routes/admin";
 import ai from "./routes/ai";
+import history from "./routes/history";
 import { queueHandler } from "./queue-consumer";
+import { hourlyReminderCron } from "./cron/hourlyReminder";
 
 
 // Importer et exporter les Durable Objects pour Cloudflare Workers
@@ -27,6 +29,7 @@ export { CommentsDurableObject } from "./durable-objects/CommentsDurableObject";
 export { AppreciationsDurableObject } from "./durable-objects/AppreciationsDurableObject";
 export { NotificationsDurableObject } from "./durable-objects/NotificationsDurableObject";
 export { TextCorrectionDurableObject } from "./durable-objects/TextCorrectionDurableObject";
+export { HistoryDurableObject } from "./durable-objects/HistoryDurableObject";
 
 const app = new Hono<{ Bindings: CloudflareBindings }>();
 
@@ -977,9 +980,17 @@ app.route("/notifications", notifications);
 app.route("/errors", errors);
 app.route("/admin", admin);
 app.route("/ai", ai);
+app.route("/history", history);
 
 export default {
   fetch: app.fetch,
   queue: queueHandler,
+  scheduled: async (_controller: ScheduledController, env: CloudflareBindings, ctx: ExecutionContext) => {
+    ctx.waitUntil(
+      hourlyReminderCron(env).catch((err) => {
+        console.error("[Cron] Rappel horaire en échec:", err);
+      })
+    );
+  },
 };
 
