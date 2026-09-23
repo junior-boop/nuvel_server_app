@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { v4 as uuidv4 } from "uuid";
 import Metadata_images from "./images_rename";
+import { compressImage } from "./image_compress";
 import { ImagesTable } from "../utils/tables";
 
 const images = new Hono<{ Bindings: CloudflareBindings }>();
@@ -79,5 +80,45 @@ images.get("/g/:name", async ({ json, env, res, req }) => {
 
   return new Response(files.body, { headers });
 });
+
+images.post(
+  "/test-compress/:userid",
+  async ({ req, env, json, text, status }) => {
+    const bucket = env.STORAGE;
+    const { images: image } = await req.parseBody();
+    const { userid } = req.param();
+
+    try {
+      const compressed = await compressImage(image as File);
+      const key = `images/test/${uuidv4()}.jpg`;
+
+      await bucket.put(key, compressed.bytes, {
+        customMetadata: {
+          userid,
+          originalSize: String(compressed.originalSize),
+          compressedSize: String(compressed.compressedSize),
+        },
+        httpMetadata: {
+          contentType: compressed.contentType,
+        },
+      });
+
+      return json({
+        key,
+        originalSize: compressed.originalSize,
+        compressedSize: compressed.compressedSize,
+        gain:
+          (
+            100 -
+            (compressed.compressedSize / compressed.originalSize) * 100
+          ).toFixed(1) + "%",
+      });
+    } catch (error) {
+      console.log(error);
+      status(500);
+      return text("il y a une erreur " + error);
+    }
+  },
+);
 
 export default images;
