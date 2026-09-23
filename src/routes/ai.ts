@@ -108,15 +108,29 @@ Si le contexte original est vide, ou ne contient que des versets bibliques sans 
 En revanche, si le lecteur pose une question précise sur un verset (sens d'un mot, contexte historique, lien avec un autre passage), y répondre normalement même sans méditation préalable.`;
 
   try {
-    const result = await env.AI.run("@cf/google/gemma-4-26b-a4b-it" as keyof AiModels, {
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: question },
-      ],
-    });
+    const geminiResponse = await fetch(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": env.GEMINI_API_KEY,
+        },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: systemPrompt }] },
+          contents: [{ role: "user", parts: [{ text: question }] }],
+        }),
+      }
+    );
 
-    const output = result as { response?: string; choices?: { message?: { content?: string } }[] };
-    const answer = (output.response ?? output.choices?.[0]?.message?.content ?? "").trim();
+    if (!geminiResponse.ok) {
+      throw new Error(`Gemini API a répondu ${geminiResponse.status}: ${await geminiResponse.text()}`);
+    }
+
+    const result = await geminiResponse.json<{
+      candidates?: { content?: { parts?: { text?: string }[] } }[];
+    }>();
+    const answer = (result.candidates?.[0]?.content?.parts?.[0]?.text ?? "").trim();
     return json({ success: true, answer });
   } catch (err) {
     console.error("[AI Agent] Erreur:", err);

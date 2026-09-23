@@ -21,6 +21,7 @@ declare namespace Cloudflare {
 		DB: D1Database;
 		NOTIFICATIONS_QUEUE: Queue;
 		AI: Ai;
+		GEMINI_API_KEY: string;
 	}
 }
 interface CloudflareBindings extends Cloudflare.Env {}

@@ -20,6 +20,7 @@ import errors from "./routes/errors";
 import admin from "./routes/admin";
 import ai from "./routes/ai";
 import history from "./routes/history";
+import links from "./routes/links";
 import { queueHandler } from "./queue-consumer";
 import { hourlyReminderCron } from "./cron/hourlyReminder";
 
@@ -981,6 +982,7 @@ app.route("/errors", errors);
 app.route("/admin", admin);
 app.route("/ai", ai);
 app.route("/history", history);
+app.route("/links", links);
 
 export default {
   fetch: app.fetch,
