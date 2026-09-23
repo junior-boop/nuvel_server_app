@@ -20,12 +20,19 @@ interface ReminderTarget {
   unreadCount: number;
 }
 
-const fetchArticleTitles = async (orm: SimpleORM): Promise<string[]> => {
-  const rows = await orm.query<{ title: string | null }>(
-    `SELECT title FROM articles ORDER BY createdAt DESC LIMIT ?`,
+interface ArticlePoolEntry {
+  title: string;
+  imageurl: string | null;
+}
+
+const fetchArticlePool = async (orm: SimpleORM): Promise<ArticlePoolEntry[]> => {
+  const rows = await orm.query<{ title: string | null; imageurl: string | null }>(
+    `SELECT title, imageurl FROM articles ORDER BY createdAt DESC LIMIT ?`,
     [ARTICLE_POOL_SIZE]
   );
-  return rows.map((row) => row.title).filter((title): title is string => !!title);
+  return rows
+    .filter((row): row is { title: string; imageurl: string | null } => !!row.title)
+    .map((row) => ({ title: row.title, imageurl: row.imageurl }));
 };
 
 export async function hourlyReminderCron(env: CloudflareBindings) {
@@ -71,8 +78,8 @@ export async function hourlyReminderCron(env: CloudflareBindings) {
     else tokensByUser.set(row.userid, [row.token]);
   }
 
-  const articleTitles = targets.some((target) => target.unreadCount === 0)
-    ? await fetchArticleTitles(orm)
+  const articlePool = targets.some((target) => target.unreadCount === 0)
+    ? await fetchArticlePool(orm)
     : [];
 
   const messages: ExpoPushMessage[] = [];
@@ -81,19 +88,23 @@ export async function hourlyReminderCron(env: CloudflareBindings) {
     const tokens = tokensByUser.get(target.userId);
     if (!tokens?.length) continue;
 
-    const articleTitle =
-      target.unreadCount === 0 && articleTitles.length > 0
-        ? articleTitles[Math.floor(Math.random() * articleTitles.length)]
+    const article =
+      target.unreadCount === 0 && articlePool.length > 0
+        ? articlePool[Math.floor(Math.random() * articlePool.length)]
         : null;
 
     const { title, body, data } = buildReminder(
       resolveLanguage(target.language),
       target.unreadCount,
-      articleTitle
+      article?.title ?? null
     );
 
+    // Le champ `imageurl` est stocké sans protocole (voir images.ts), il faut
+    // le préfixer comme le fait l'app pour afficher une image.
+    const richContent = article?.imageurl ? { image: `https://${article.imageurl}` } : undefined;
+
     for (const to of tokens) {
-      messages.push({ to, sound: "default", title, body, data });
+      messages.push({ to, sound: "default", title, body, data, ...(richContent ? { richContent } : {}) });
     }
   }
 

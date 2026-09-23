@@ -11,6 +11,9 @@ export interface ExpoPushMessage {
   title: string;
   body: string;
   data: Record<string, unknown>;
+  // Image affichée dans la notification (Android nativement, iOS nécessite une
+  // Notification Service Extension côté app). Voir docs.expo.dev/push-notifications.
+  richContent?: { image: string };
 }
 
 // Chaque message porte son propre titre/corps : le cron envoie un texte différent
