@@ -1,9 +1,12 @@
 import { DurableObject } from "cloudflare:workers";
 
+const CORRECTION_SYSTEM_PROMPT =
+  "Tu es un correcteur linguistique professionnel, expert en orthographe, grammaire, conjugaison, accords et ponctuation, dans toutes les langues du monde (français, anglais, et toute autre langue). Détecte automatiquement la langue du texte fourni et corrige exclusivement dans cette même langue : ne traduis jamais. Corrige avec précision et profondeur : fautes d'orthographe et de frappe, erreurs de grammaire et de conjugaison, accords en genre et en nombre, accords sujet-verbe, homophones mal employés, ponctuation et majuscules, ainsi que les mots mal choisis ou impropres au contexte (barbarismes, faux-sens, anglicismes fautifs, répétitions maladroites) en les remplaçant par le mot juste et le plus précis. Ne change jamais le sens, le ton, le style, le registre ni la structure des phrases voulus par l'auteur, et ne reformule pas ce qui est déjà correct. Préserve la mise en forme d'origine (sauts de ligne, emojis, ponctuation expressive). Réponds uniquement avec le texte corrigé, sans aucun commentaire, explication, préambule ni traduction.";
+
 /**
  * TextCorrectionDurableObject - Un Durable Object par utilisateur.
  * Reçoit un texte, le corrige (orthographe/grammaire/ponctuation) via
- * Workers AI (@cf/google/gemma-4-26b-a4b-it) et renvoie le résultat.
+ * Gemini 2.5 Flash Lite (même modèle que /ai/agent) et renvoie le résultat.
  */
 export class TextCorrectionDurableObject extends DurableObject {
   protected env: CloudflareBindings;
@@ -30,19 +33,29 @@ export class TextCorrectionDurableObject extends DurableObject {
         );
       }
 
-      const result = await this.env.AI.run("@cf/google/gemma-4-26b-a4b-it" as keyof AiModels, {
-        messages: [
-          {
-            role: "system",
-            content:
-              "Tu es un correcteur linguistique professionnel, expert en orthographe, grammaire, conjugaison, accords et ponctuation, dans toutes les langues du monde (français, anglais, et toute autre langue). Détecte automatiquement la langue du texte fourni et corrige exclusivement dans cette même langue : ne traduis jamais. Corrige avec précision et profondeur : fautes d'orthographe et de frappe, erreurs de grammaire et de conjugaison, accords en genre et en nombre, accords sujet-verbe, homophones mal employés, ponctuation et majuscules, ainsi que les mots mal choisis ou impropres au contexte (barbarismes, faux-sens, anglicismes fautifs, répétitions maladroites) en les remplaçant par le mot juste et le plus précis. Ne change jamais le sens, le ton, le style, le registre ni la structure des phrases voulus par l'auteur, et ne reformule pas ce qui est déjà correct. Préserve la mise en forme d'origine (sauts de ligne, emojis, ponctuation expressive). Réponds uniquement avec le texte corrigé, sans aucun commentaire, explication, préambule ni traduction.",
+      const geminiResponse = await fetch(
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-goog-api-key": this.env.GEMINI_CORRECTION_API_KEY,
           },
-          { role: "user", content: text },
-        ],
-      });
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: CORRECTION_SYSTEM_PROMPT }] },
+            contents: [{ role: "user", parts: [{ text }] }],
+          }),
+        }
+      );
 
-      const output = result as { response?: string; choices?: { message?: { content?: string } }[] };
-      const corrected = (output.response ?? output.choices?.[0]?.message?.content ?? "").trim();
+      if (!geminiResponse.ok) {
+        throw new Error(`Gemini API a répondu ${geminiResponse.status}: ${await geminiResponse.text()}`);
+      }
+
+      const result = await geminiResponse.json<{
+        candidates?: { content?: { parts?: { text?: string }[] } }[];
+      }>();
+      const corrected = (result.candidates?.[0]?.content?.parts?.[0]?.text ?? "").trim();
 
       return new Response(
         JSON.stringify({ success: true, original: text, corrected }),
