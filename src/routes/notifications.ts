@@ -194,6 +194,85 @@ notifications.post("/broadcast", authMiddleware, async ({ req, env, json, status
   }
 });
 
+// Lister les annonces/sujets de prière déjà diffusés, paginés (plus récentes en premier).
+// Avant le passage au destinataire sentinelle "*", chaque diffusion créait une ligne
+// PAR destinataire (même title/body/type/articleId) : on regroupe ces lignes en une
+// seule "campagne" pour l'affichage et la suppression groupée.
+notifications.get("/broadcast/list", authMiddleware, async ({ req, env, json, status, get }) => {
+  const user = get("user");
+
+  if (user.role !== "admin") {
+    status(403);
+    return json({ success: false, message: "Accès réservé aux administrateurs" });
+  }
+
+  const { limit, offset } = req.query();
+  const take = Math.min(Number(limit) || 15, 100);
+  const skip = Number(offset) || 0;
+
+  try {
+    const Notifications = NotificationsTable(env);
+
+    const rows = await Notifications.orm.query<any>(
+      `SELECT title, body, type, articleId, MAX(createdAt) AS createdAt, COUNT(*) AS recipientCount
+         FROM notifications
+        WHERE type IN ('announcement', 'prayer_topic')
+        GROUP BY title, body, type, articleId
+        ORDER BY createdAt DESC
+        LIMIT ? OFFSET ?`,
+      [take, skip]
+    );
+
+    const [{ total } = { total: 0 }] = await Notifications.orm.query<any>(
+      `SELECT COUNT(*) AS total FROM (
+         SELECT 1 FROM notifications
+          WHERE type IN ('announcement', 'prayer_topic')
+          GROUP BY title, body, type, articleId
+       )`,
+      []
+    );
+
+    return json({ success: true, notifications: rows || [], total: Number(total) || 0 });
+  } catch (error) {
+    status(500);
+    return json({ success: false, error: String(error) });
+  }
+});
+
+// Supprimer une campagne de diffusion (toutes les lignes partageant le même
+// title/body/type/articleId — une par destinataire pour les anciennes diffusions).
+notifications.delete("/broadcast", authMiddleware, async ({ req, env, json, status, get }) => {
+  const user = get("user");
+
+  if (user.role !== "admin") {
+    status(403);
+    return json({ success: false, message: "Accès réservé aux administrateurs" });
+  }
+
+  const { title, body, type, articleId } = await req.json();
+
+  if (!title || !body || !type) {
+    status(400);
+    return json({ success: false, message: "title, body et type sont requis" });
+  }
+
+  try {
+    const Notifications = NotificationsTable(env);
+
+    await Notifications.orm.query(
+      `DELETE FROM notifications
+        WHERE title = ? AND body = ? AND type = ?
+          AND (articleId = ? OR (articleId IS NULL AND ? IS NULL))`,
+      [title, body, type, articleId ?? null, articleId ?? null]
+    );
+
+    return json({ success: true });
+  } catch (error) {
+    status(500);
+    return json({ success: false, error: String(error) });
+  }
+});
+
 // Lister les notifications d'un utilisateur (plus récentes en premier).
 // Réunit les notifications personnelles et les annonces diffusées ("*"), et calcule
 // l'état "lu" par jointure sur notification_reads (la colonne read reste lue pour
